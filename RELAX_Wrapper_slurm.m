@@ -203,8 +203,17 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
 
     if ~exist([RELAX_cfg.foldername filesep 'RELAXProcessed'], 'dir')
         mkdir([RELAX_cfg.foldername filesep 'RELAXProcessed']); % make dir if not present
-    end 
-    savefileone=[RELAX_cfg.foldername filesep 'RELAXProcessed' filesep 'RELAX_cfg'];
+    end
+    if ~exist([RELAX_cfg.foldername filesep 'RELAXProcessed' filesep 'RELAX_cfg'], 'dir')
+        mkdir([RELAX_cfg.foldername filesep 'RELAXProcessed' filesep 'RELAX_cfg']); % per-file cfg copies, so parallel array tasks don't clobber a shared file
+    end
+    % Save this file's config under its own name, so parallel array tasks do not clobber
+    % a shared file. fileparts strips both the directory (RELAX_cfg.filename carries a
+    % full path in single-file mode) and the .set extension - saving with a .set
+    % extension would write a MAT-format file that the BIDS-mode '**/*.set' glob would
+    % later pick up as if it were a recording.
+    [~, cfg_basename, ~] = fileparts(RELAX_cfg.filename);
+    savefileone=[RELAX_cfg.foldername filesep 'RELAXProcessed' filesep 'RELAX_cfg' filesep cfg_basename '.mat'];
     save(savefileone,'RELAX_cfg')
 
     %% Select channels 
