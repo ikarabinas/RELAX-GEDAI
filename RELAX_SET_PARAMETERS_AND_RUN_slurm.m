@@ -112,7 +112,7 @@ clear all; close all; clc;
 % EEGLAB:
 % https://sccn.ucsd.edu/eeglab/index.php
 % Delorme, A., & Makeig, S. (2004). EEGLAB: an open source toolbox for analysis of single-trial EEG dynamics including independent component analysis. Journal of neuroscience methods, 134(1), 9-21.
-addpath('/home/imk2003/Documents/MATLAB/eeglab/');
+addpath('/home/nga4004/tools/eeglab2026.0.0/');
 eeglab;
 
 % PREP pipeline to reject bad electrodes (install plugin to EEGLAB, or via the github into the EEGLAB plugin folder): 
@@ -128,7 +128,7 @@ addpath(genpath('/home/imk2003/Documents/MATLAB/eeglab/plugins/mwf-artifact-remo
 % Fieldtrip:
 % http://www.fieldtriptoolbox.org/
 % Robert Oostenveld, Pascal Fries, Eric Maris, and Jan-Mathijs Schoffelen. FieldTrip: Open Source Software for Advanced Analysis of MEG, EEG, and Invasive Electrophysiological Data. Computational Intelligence and Neuroscience, vol. 2011, Article ID 156869, 9 pages, 2011. doi:10.1155/2011/156869.
-addpath('/home/imk2003/Documents/MATLAB/eeglab/plugins/Fieldtrip-lite250523/');
+addpath('/home/nga4004/tools/eeglab2026.0.0/plugins/Fieldtrip-lite250523/');
 
 % PICARD:
 % Can be installed from the EEGLAB plugin manager.
@@ -141,13 +141,13 @@ addpath('/home/imk2003/Documents/MATLAB/eeglab/plugins/FastICA_25/');
 % https://github.com/sccn/ICLabel
 
 % Specify  RELAX folder location (this toolbox):
-addpath('/home/imk2003/Documents/MATLAB/eeglab/plugins/RELAX/');
+addpath('/home/nga4004/gitRepos/RELAX-GEDAI/');
 
 % Specify your electrode locations with the correct cap file:
 RELAX_cfg.caploc=[]; % path containing electrode positions. Set to =[] if electrode locations are already in your EEG file.
 
 % Specify the to be processed file locations:
-RELAX_cfg.myPath='/athena/grosenicklab/scratch/imk2003/acc_tmseeg/eeg_data/RELAX_GEDAI/RELAX_twICA_GEDAI-ofc';
+RELAX_cfg.myPath='/home/nga4004/TMS_response_variability/store/mdd_dlpfc/preprocessed_Aug26/tms_artifact_removed/';
 
 % Specify whether all data is in a single folder or data are in BIDS format
 % (each EEG file within its own separate folder):
@@ -314,7 +314,15 @@ end
 
 RELAX_cfg.Perform_targeted_wICA=1; % This is the RELAX recommended artifact reduction method.
 
-RELAX_cfg.Run_GEDAI=1;  % IMK added
+RELAX_cfg.Run_GEDAI=0;  % IMK added
+
+% Boundary/discontinuity handling. The input files for this pipeline contain boundary
+% events marking periods excised by TMS artifact removal, with only ~8 s of continuous
+% data between them. See
+% docs/superpowers/specs/2026-09-08-boundary-aware-preprocessing-design.md
+RELAX_cfg.RespectBoundaries=1; % 1 = process each stretch of data between boundary events separately, with reflection-padded edges
+RELAX_cfg.Perform_PREP_bad_channel_rejection=0; % 0 = skip PREP findNoisyChannels (boundary-blind); RELAX_excluding_channels_and_epoching still rejects bad channels boundary-safely
+RELAX_cfg.ComputeSER_ARR=0; % 0 = skip the SER/ARR artifact marking block (its only consumer, RELAX_metrics_final_SER_and_ARR, is commented out, and the marking functions are boundary-blind)
 
 RELAX_cfg.Do_MWF_Once=0; % 1 = Perform the MWF cleaning a second time (1 for yes, 0 for no).
 RELAX_cfg.Do_MWF_Twice=0; % 1 = Perform the MWF cleaning a second time (1 for yes, 0 for no).
@@ -325,7 +333,7 @@ RELAX_cfg.ICA_method='picard';
 RELAX_cfg.Report_all_ICA_info='yes'; % set to yes to provide detailed report of ICLabel artifact information. Runs ~20s slower per file.
 RELAX_cfg.Clean_other_comps='no'; % set to yes to clean independent components other than blinks and muscle activity
 
-RELAX_cfg.ICLabel_thresholds=[0 0 0 0 0 0 0]; 
+RELAX_cfg.ICLabel_thresholds=[0.5 0.5 0.5 0.5 0.5 0.5 0.5];
 % e.g. [0.5 0.8 0.8 0.5 0.5 0.5 0.5]; with values specifying comp types in the following order: ['Brain' 'Muscle' 'Eye'	'Heart'	'Line Noise' 'Channel Noise' 'Other']
 % set these to a decimal > 0 if you want components to only be considered as 
 % potential artifacts if ICLabel provides a higher decimal than that for the 
@@ -410,18 +418,18 @@ end
 % avoiding low pass filtering prior to MWF reduces chances of rank deficiencies increasing potential values for MWF delay period 
 % (downsampling the data after filtering also reduces the chances of rank deficiencies) 
 RELAX_cfg.DownSample='yes'; % set to 'yes' if you wish to downsample the data
-RELAX_cfg.DownSample_to_X_Hz=250; % frequency to downsample to (in samples per second / Hz). GEDAI works best at ~250 Hz
+RELAX_cfg.DownSample_to_X_Hz=500; % frequency to downsample to (in samples per second / Hz). GEDAI works best at ~250 Hz
 
 RELAX_cfg.FilterType='Butterworth'; % set as 'pop_eegfiltnew' to use EEGLAB's filter or 'Butterworth' to use Butterworth filter
 RELAX_cfg.causal_or_acausal_filter='acausal'; % set as 'acausal' or 'causal'. 
 % Acausal filters are typical, and avoid filter distortions affecting data only forwards in time, whereas causal filters are less typical, cause
 % filter distortions only forwards in time, but can protect against spurious conclusions that neural activity precedes stimuli due to filter
 % distortions being projected back from post-stimulus activity to pre-stimulus periods. See: https://doi.org/10.3389/fpsyg.2012.00233
-RELAX_cfg.HighPassFilter=0.5; % Sets the high pass filter. 1Hz is best for ICA decomposition if you're examining just oscillatory data, 0.25Hz has been suggested to be the highest before ERPs are adversely affected by filtering 
+RELAX_cfg.HighPassFilter=1; % Sets the high pass filter. 1Hz is best for ICA decomposition if you're examining just oscillatory data, 0.25Hz has been suggested to be the highest before ERPs are adversely affected by filtering 
 %(but at least two studies recently have shown better detection of experimental effects with high-pass set at 0.5Hz even for ERPs, and I find a minority of my files show drift at 0.3Hz).
-RELAX_cfg.LowPassFilter=115; % If you filter out data below 75Hz, you can't use the objective muscle detection method
+RELAX_cfg.LowPassFilter=200; % If you filter out data below 75Hz, you can't use the objective muscle detection method
 
-RELAX_cfg.NotchFilterType='Butterworth'; % set as 'Butterworth' to use Butterworth filter, 'ZaplinePlus' to use ZaplinePlus, or PMnotch to use ERPLAB's stop-band Parks-McClellan Notch (requires ERPLAB to be installed). 
+RELAX_cfg.NotchFilterType='ZaplinePlus'; % set as 'Butterworth' to use Butterworth filter, 'ZaplinePlus' to use ZaplinePlus, or PMnotch to use ERPLAB's stop-band Parks-McClellan Notch (requires ERPLAB to be installed). 
 % ZaplinePlus works best on data sampled at 512Hz or below, consider downsampling if above this.
 RELAX_cfg.LineNoiseFrequency=[60]; % Frequencies for bandstop filter in order to address line noise (set to 60 in countries with 60Hz line noise, and 50 in countries with 50Hz line noise).
 

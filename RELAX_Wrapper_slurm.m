@@ -27,15 +27,31 @@ tic;
 % Turn off auto fig display
 set(0, 'DefaultFigureVisible', 'off')
 
-% % Detect number of workers actually allocated to this job by SLURM
-% n_workers = str2double(getenv('SLURM_CPUS_PER_TASK'));
-% if isnan(n_workers) || n_workers < 1
-%     n_workers = feature('numcores'); % fallback for non-SLURM/interactive runs
-% end
-% if isempty(gcp('nocreate'))
-%     parpool(n_workers);
-% end
-% fprintf('Started parpool with %d workers\n', n_workers);
+% Detect number of workers actually allocated to this job by SLURM
+n_workers = str2double(getenv('SLURM_CPUS_PER_TASK'));
+if isnan(n_workers) || n_workers < 1
+    n_workers = str2double(getenv('SLURM_CPUS_ON_NODE'));  % set for any SLURM job
+end
+if isnan(n_workers) || n_workers < 1
+    n_workers = feature('numcores');
+end
+% Give each SLURM array task its own job storage location, so that concurrent
+% parpool startups don't collide on the shared default (~/.matlab/local_cluster_jobs)
+if isempty(gcp('nocreate'))
+    c = parcluster('local');
+    scratchRoot = getenv('TMPDIR');
+    if isempty(scratchRoot); scratchRoot = tempdir; end
+    jobID = getenv('SLURM_JOB_ID');
+    if isempty(jobID); jobID = num2str(feature('getpid')); end % fallback for non-SLURM/interactive runs
+    taskID = getenv('SLURM_ARRAY_TASK_ID');
+    if isempty(taskID); taskID = '0'; end % fallback for non-array jobs
+    jsl = fullfile(scratchRoot, sprintf('mjs_%s_%s', jobID, taskID));
+    if ~exist(jsl, 'dir'); mkdir(jsl); end
+    c.JobStorageLocation = jsl;
+    fprintf('Using parpool job storage location: %s\n', jsl);
+    parpool(c, n_workers);
+end
+fprintf('Started parpool with %d workers\n', n_workers);
 
 % Set output path
 RELAX_cfg.OutputPath=[RELAX_cfg.myPath filesep 'RELAXProcessed' filesep];   % use fileseparators for increased compatability 
@@ -180,6 +196,9 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     EEG.RELAX.Data_has_been_cleaned=0;
     RELAX_cfg.ms_per_sample=(1000/EEG.srate);
 
+    % Fail fast if this file contains discontinuities and a boundary-blind stage is on:
+    RELAX_check_boundary_support(EEG, RELAX_cfg);
+
     if ~exist([RELAX_cfg.foldername filesep 'RELAXProcessed'], 'dir')
         mkdir([RELAX_cfg.foldername filesep 'RELAXProcessed']); % make dir if not present
     end 
@@ -304,14 +323,29 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
 
     %% Clean flat channels and bad channels showing improbable data:
     % PREP pipeline: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4471356/
-    addpath(genpath(PrepFolderLocation{1,1})); %  1.1.4: fix error where PREP seems to be removed from the path after an EEGLAB update
-    noisyOut = findNoisyChannels(EEG);  
-    EEG.RELAXProcessingExtremeRejections.PREPBasedChannelToReject={};
-    for x=1:size(noisyOut.noisyChannels.all,2) % loop through output of PREP's findNoisyChannels and take a record of noisy electrodes for deletion:
-        PREPBasedChannelToReject{x}=EEG.chanlocs(noisyOut.noisyChannels.all(x)).labels;
-        EEG.RELAXProcessingExtremeRejections.PREPBasedChannelToReject = PREPBasedChannelToReject';
+    % NOTE: findNoisyChannels states its own precondition "No segments of the EEG data
+    % have been removed" and tiles its correlation windows flatly from sample 1, so on
+    % data with boundary events a large fraction of windows straddle a discontinuity and
+    % channel rejection becomes close to arbitrary. It is therefore skipped by default
+    % here; RELAX_excluding_channels_and_epoching performs its own boundary-safe channel
+    % rejection immediately afterwards. Set Perform_PREP_bad_channel_rejection=1 to
+    % restore the original behaviour on data with no discontinuities.
+    if ~isfield(RELAX_cfg,'Perform_PREP_bad_channel_rejection')
+        RELAX_cfg.Perform_PREP_bad_channel_rejection = 1; % absent = original behaviour
     end
-    
+    EEG.RELAXProcessingExtremeRejections.PREPBasedChannelToReject={};
+    noisyOut = struct('noisyChannels', struct('all', []));
+    if RELAX_cfg.Perform_PREP_bad_channel_rejection == 1
+        addpath(genpath(PrepFolderLocation{1,1})); %  1.1.4: fix error where PREP seems to be removed from the path after an EEGLAB update
+        noisyOut = findNoisyChannels(EEG);
+        for x=1:size(noisyOut.noisyChannels.all,2) % loop through output of PREP's findNoisyChannels and take a record of noisy electrodes for deletion:
+            PREPBasedChannelToReject{x}=EEG.chanlocs(noisyOut.noisyChannels.all(x)).labels;
+            EEG.RELAXProcessingExtremeRejections.PREPBasedChannelToReject = PREPBasedChannelToReject';
+        end
+    else
+        fprintf('Skipping PREP findNoisyChannels (RELAX_cfg.Perform_PREP_bad_channel_rejection=0).\n');
+    end
+
     % Print channel names to be removed by PREP Noisy Channels
     if ~isempty(noisyOut.noisyChannels.all)
         noisy_labels = {EEG.chanlocs(noisyOut.noisyChannels.all).labels};
@@ -347,8 +381,14 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
 
     rawEEG=continuousEEG; % Take a copy of the not yet cleaned data for calculation of all cleaning SER and ARR at the end
     
-    %% Mark artifacts for calculating SER and ARR, regardless of whether MWF is performed (RELAX v1.1.3 update): 
-    if RELAX_cfg.computecleanedmetrics==1 && (RELAX_cfg.Do_MWF_Once==0 || RELAX_cfg.Do_MWF_Twice==0 || RELAX_cfg.Do_MWF_Thrice==0)
+    %% Mark artifacts for calculating SER and ARR, regardless of whether MWF is performed (RELAX v1.1.3 update):
+    % NOTE: this block exists only to build NoiseMaskFullLengthR1, whose sole consumer
+    % is RELAX_metrics_final_SER_and_ARR - and that call is commented out further down
+    % this file. It is off by default because RELAX_muscle, RELAX_horizontaleye,
+    % RELAX_drift and RELAX_pad_brief_mask_periods are all boundary-blind and would need
+    % boundary handling before this block can be re-enabled on discontinuous data.
+    if ~isfield(RELAX_cfg,'ComputeSER_ARR'); RELAX_cfg.ComputeSER_ARR = 0; end
+    if RELAX_cfg.ComputeSER_ARR==1 && RELAX_cfg.computecleanedmetrics==1 && (RELAX_cfg.Do_MWF_Once==0 || RELAX_cfg.Do_MWF_Twice==0 || RELAX_cfg.Do_MWF_Thrice==0)
         [Marking_artifacts_for_SER_ARR, ~] = RELAX_muscle(continuousEEG, epochedEEG, RELAX_cfg); 
         Marking_all_artifacts_for_SER_ARR.RELAXProcessing.Details.NoiseMaskFullLength(Marking_artifacts_for_SER_ARR.RELAXProcessing.Details.NoiseMaskFullLength==1)=1; 
         [Marking_artifacts_for_SER_ARR] = RELAX_horizontaleye(continuousEEG, RELAX_cfg); 
