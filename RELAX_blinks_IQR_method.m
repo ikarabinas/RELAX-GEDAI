@@ -36,6 +36,12 @@ function [continuousEEG, epochedEEG] = RELAX_blinks_IQR_method(continuousEEG, ep
         RELAX_cfg.LowPassFilterAt_6Hz_BeforeDetectingBlinks='no'; % low pass filters the data @ 6Hz prior to blink detection (helps if high power alpha is disrupting blink detection, not necessary in the vast majority of cases)
     end
     
+    if isfield(RELAX_cfg,'RespectBoundaries')
+        RespectBoundaries = RELAX_cfg.RespectBoundaries;
+    else
+        RespectBoundaries = 0;
+    end
+
     % Check that blink channels are still available after Noisy channels
     available_channels = {continuousEEG.chanlocs.labels};
     available_blink_electrodes = intersect(RELAX_cfg.BlinkElectrodes, available_channels);
@@ -87,9 +93,9 @@ function [continuousEEG, epochedEEG] = RELAX_blinks_IQR_method(continuousEEG, ep
     disp(Message);
     % Apply butterworth filter: 
     if strcmp(RELAX_cfg.LowPassFilterAt_6Hz_BeforeDetectingBlinks,'no')
-        EEGEyeOnly = RELAX_filtbutter( EEGEyeOnly, 1, 25, 4, 'bandpass','acausal');
+        EEGEyeOnly = RELAX_filtbutter( EEGEyeOnly, 1, 25, 4, 'bandpass','acausal', RespectBoundaries);
     elseif strcmp(RELAX_cfg.LowPassFilterAt_6Hz_BeforeDetectingBlinks,'yes')
-        EEGEyeOnly = RELAX_filtbutter( EEGEyeOnly, 1, 6, 4, 'bandpass','acausal');
+        EEGEyeOnly = RELAX_filtbutter( EEGEyeOnly, 1, 6, 4, 'bandpass','acausal', RespectBoundaries);
     end
 
     Message = ['Filtering here only performed to better detect blinks, output data will still be bandpass filtered from ', num2str(RELAX_cfg.HighPassFilter), ' to ', num2str(RELAX_cfg.LowPassFilter)];
@@ -146,20 +152,43 @@ function [continuousEEG, epochedEEG] = RELAX_blinks_IQR_method(continuousEEG, ep
 
     % Mark the blink peak into the event list:
     if continuousEEG.RELAX.IQRmethodDetectedBlinks==1
-        for x=1:size(BlinkRunIndex,2) % v1.1.3 update, removed an erroneous "- 1" after size(BlinkRunIndex,2), thankyou Mana Biabani for the update
-            if (round(BlinkMaxLatency(1,x)-400/RELAX_cfg.ms_per_sample)>0) && (round(BlinkMaxLatency(1,x)+400/RELAX_cfg.ms_per_sample))<size(EEG.data,2) %v1.1.6 update to address issue for sample rates above 1000Hz
+        if RespectBoundaries
+            % Every blink is marked. A blink whose 400 ms window would run past the edge
+            % of the stretch of continuous data it sits in has that window truncated to
+            % the segment, so no mask ever spans a discontinuity and no blink is lost.
+            % The base events use the same truncated bounds as the mask; nothing reads
+            % them (every consumer epochs around EyeBlinkMax), but keeping them
+            % consistent avoids events that point outside their own segment.
+            blinkSegments = RELAX_get_segments(continuousEEG);
+            blinkHalfWidth = 400/RELAX_cfg.ms_per_sample;
+            for x=1:size(BlinkRunIndex,2)
+                [maskStart, maskEnd] = RELAX_blink_mask_bounds(BlinkMaxLatency(1,x), ...
+                    blinkHalfWidth, blinkSegments, size(EEG.data,2));
                 continuousEEG.event(size(continuousEEG.event,2)+1).type='EyeBlinkLeftBase';
-                continuousEEG.event(size(continuousEEG.event,2)).latency=BlinkMaxLatency(1,x)-(400/RELAX_cfg.ms_per_sample);
+                continuousEEG.event(size(continuousEEG.event,2)).latency=maskStart;
                 continuousEEG.event(size(continuousEEG.event,2)+1).type='EyeBlinkMax';
                 continuousEEG.event(size(continuousEEG.event,2)).latency=BlinkMaxLatency(1,x);
                 continuousEEG.event(size(continuousEEG.event,2)+1).type='EyeBlinkRightBase';
-                continuousEEG.event(size(continuousEEG.event,2)).latency=BlinkMaxLatency(1,x)+(400/RELAX_cfg.ms_per_sample);
-                continuousEEG.RELAXProcessing.Details.eyeblinkmask(round(BlinkMaxLatency(1,x)-(400/RELAX_cfg.ms_per_sample)):round(BlinkMaxLatency(1,x)+(400/RELAX_cfg.ms_per_sample)))=1;
-            else
-                continuousEEG.RELAX.IQRmethodDetectedBlinks=0; % v1.1.3 update, so later functions do not search for blinks that aren't marked, if the blink was only present right on the edge of the file. Thankyou Mana Biabani for the update
+                continuousEEG.event(size(continuousEEG.event,2)).latency=maskEnd;
+                continuousEEG.RELAXProcessing.Details.eyeblinkmask(maskStart:maskEnd)=1;
+            end
+            fprintf('Marked %d blink(s), truncated to their segments where needed.\n', size(BlinkRunIndex,2));
+        else
+            for x=1:size(BlinkRunIndex,2) % v1.1.3 update, removed an erroneous "- 1" after size(BlinkRunIndex,2), thankyou Mana Biabani for the update
+                if (round(BlinkMaxLatency(1,x)-400/RELAX_cfg.ms_per_sample)>0) && (round(BlinkMaxLatency(1,x)+400/RELAX_cfg.ms_per_sample))<size(EEG.data,2) %v1.1.6 update to address issue for sample rates above 1000Hz
+                    continuousEEG.event(size(continuousEEG.event,2)+1).type='EyeBlinkLeftBase';
+                    continuousEEG.event(size(continuousEEG.event,2)).latency=BlinkMaxLatency(1,x)-(400/RELAX_cfg.ms_per_sample);
+                    continuousEEG.event(size(continuousEEG.event,2)+1).type='EyeBlinkMax';
+                    continuousEEG.event(size(continuousEEG.event,2)).latency=BlinkMaxLatency(1,x);
+                    continuousEEG.event(size(continuousEEG.event,2)+1).type='EyeBlinkRightBase';
+                    continuousEEG.event(size(continuousEEG.event,2)).latency=BlinkMaxLatency(1,x)+(400/RELAX_cfg.ms_per_sample);
+                    continuousEEG.RELAXProcessing.Details.eyeblinkmask(round(BlinkMaxLatency(1,x)-(400/RELAX_cfg.ms_per_sample)):round(BlinkMaxLatency(1,x)+(400/RELAX_cfg.ms_per_sample)))=1;
+                else
+                    continuousEEG.RELAX.IQRmethodDetectedBlinks=0; % v1.1.3 update, so later functions do not search for blinks that aren't marked, if the blink was only present right on the edge of the file. Thankyou Mana Biabani for the update
+                end
             end
         end
-    end    
+    end
 
     continuousEEG=eeg_checkset(continuousEEG,'eventconsistency');        
     continuousEEG.RELAX.eyeblinkmask=continuousEEG.RELAXProcessing.Details.eyeblinkmask;
