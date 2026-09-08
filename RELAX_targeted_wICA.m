@@ -235,6 +235,17 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
         end
     end
 
+    % Boundary handling. Derive the segment list from the CURRENT EEG: eeg_eegrej runs
+    % earlier in the wrapper and adds boundaries, so wICA sees more discontinuities than
+    % the filtering stage did.
+    if isfield(RELAX_cfg,'RespectBoundaries')
+        RespectBoundaries = RELAX_cfg.RespectBoundaries;
+    else
+        RespectBoundaries = 0;
+    end
+    wICAsegments = RELAX_get_segments(EEG);
+    wavelet_pad_samples = 512; % coif5 level-5 support is about 30*2^4 = 480 samples
+
     check_padding_required = mod(size(Component,2),2^5);
     if check_padding_required ~=0
         padding = zeros(1,(2^5)-check_padding_required);
@@ -257,24 +268,35 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
             else
                 wavelet_threshold = wavelet_threshold*1;
             end
-            wavelet_transform = swt(padded_comp,5,'coif5'); % apply stationary wavelet transform to each component to reduce neural contribution to component
-            thresholded_wavelet_transform = wthresh(wavelet_transform,threshold_type,wavelet_threshold); % remove negligible values by applying thresholding
-            artifact_comp(comp_number,:) = iswt(thresholded_wavelet_transform,'coif5'); % use inverse wavelet transform to obtained the wavelet transformed component
-            clear thresholded_wavelet_transform padded_comp wavelet_threshold threshold_type wavelet_transform 
+            if RespectBoundaries
+                % Transform each segment separately. The threshold stays the one derived
+                % from the whole component above, so segmentation changes only where the
+                % wavelet basis is applied, not how aggressively it thresholds.
+                artifact_comp(comp_number,:) = RELAX_apply_by_segments(Component(comp_number,:), wICAsegments, ...
+                    @(d) RELAX_wavelet_denoise_segment(d, wavelet_threshold, threshold_type), wavelet_pad_samples);
+            else
+                wavelet_transform = swt(padded_comp,5,'coif5'); % apply stationary wavelet transform to each component to reduce neural contribution to component
+                thresholded_wavelet_transform = wthresh(wavelet_transform,threshold_type,wavelet_threshold); % remove negligible values by applying thresholding
+                artifact_comp(comp_number,:) = iswt(thresholded_wavelet_transform,'coif5'); % use inverse wavelet transform to obtained the wavelet transformed component
+                clear thresholded_wavelet_transform wavelet_transform
+            end
+            clear padded_comp wavelet_threshold threshold_type
         end
     end
     % pad non-artifact components with 0s in the same way that the artifact components were padded:
     if sum(ICsMostLikelyNotBrain)==0
         artifact_comp(1,:)=zeros(1,size(EEG.data,2));
-        artifact_comp = [artifact_comp(:,:),padding]; % pad with zeros
+        if ~RespectBoundaries
+            artifact_comp = [artifact_comp(:,:),padding]; % pad with zeros
+        end
     end
     for comp_number = 1:size(Component,1)
         if ICsMostLikelyNotBrain(comp_number)==0
             artifact_comp(comp_number,:)=zeros(1,size(artifact_comp,2));
         end
     end
-    % remove padding
-    if ~isempty(padding)
+    % remove padding (only the legacy whole-record path adds any)
+    if ~isempty(padding) && ~RespectBoundaries
         artifact_comp = artifact_comp(:,1:end-numel(padding));
     end
 
@@ -285,10 +307,16 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
     for comp_number=1:size(Component,1)
         if ICsMostLikelyEye(comp_number)==1
             [z1, p1] = butter(2, [0.5 25]./(EEG.srate/2), 'bandpass');
-            dataIn=Component(comp_number,:)';
-            dataIn=double(dataIn);
-            dataFilt1 = filtfilt(z1,p1,dataIn);
-            IC_filtered = dataFilt1';
+            if RespectBoundaries
+                % Pad width from the 0.5 Hz low edge, which governs the transient length
+                IC_filtered = RELAX_apply_by_segments(double(Component(comp_number,:)), wICAsegments, ...
+                    @(d) filtfilt(z1,p1,d')', round(3*EEG.srate/0.5));
+            else
+                dataIn=Component(comp_number,:)';
+                dataIn=double(dataIn);
+                dataFilt1 = filtfilt(z1,p1,dataIn);
+                IC_filtered = dataFilt1';
+            end
             [blink_periods,~,~]=isoutlier(IC_filtered,'median',ThresholdFactor=2);
             ix_blinkstart=find(diff(blink_periods)==1)+1;  % indices where BlinkIndexMetric goes from 0 to 1
             ix_blinkend=find(diff(blink_periods)==-1);  % indices where BlinkIndexMetric goes from 1 to 0
@@ -313,18 +341,14 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
                     end
                 end
             end
-            padded_blink_periods=double(blink_periods);
-            for c=flip(1:size(padded_blink_periods,2)-(moving_mean_length+1))
-                if padded_blink_periods(1,c)==1 
-                    padded_blink_periods(1,c:c+moving_mean_length)=1;
-                end
+            if RespectBoundaries
+                % Pad width 0: this is a binary mask, so reflection padding is meaningless;
+                % the point is only that dilation cannot cross a segment edge.
+                M(comp_number,:) = RELAX_apply_by_segments(double(blink_periods), wICAsegments, ...
+                    @(d) RELAX_pad_blink_mask_block(d, moving_mean_length), 0);
+            else
+                M(comp_number,:) = RELAX_pad_blink_mask_block(double(blink_periods), moving_mean_length);
             end
-            for c=(moving_mean_length+1):size(padded_blink_periods,2)
-                if padded_blink_periods(1,c)==1 
-                    padded_blink_periods(1,c-moving_mean_length:c)=1;
-                end
-            end
-            M(comp_number,:) = movmean(padded_blink_periods,[moving_mean_length moving_mean_length]);
             artifact_comp(comp_number,:)=(artifact_comp(comp_number,:).*M(comp_number,:));
         end
     end
@@ -333,10 +357,16 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
     for comp_number=1:size(Component,1) % v2.0.1: NWB updated 8/8/2025 to specify which dimension of 'Component' variable should be used to determine number of components
         if ICsMostLikelyMuscle(comp_number)==1
             [z1, p1] = butter(2, 15./(EEG.srate/2), 'high');
-            dataIn=Component(comp_number,:)';
-            dataIn=double(dataIn);
-            dataFilt1 = filtfilt(z1,p1,dataIn);
-            artifact_comp(comp_number,:) = dataFilt1';
+            if RespectBoundaries
+                % Pad width from the 15 Hz cutoff, which governs the transient length
+                artifact_comp(comp_number,:) = RELAX_apply_by_segments(double(Component(comp_number,:)), wICAsegments, ...
+                    @(d) filtfilt(z1,p1,d')', round(3*EEG.srate/15));
+            else
+                dataIn=Component(comp_number,:)';
+                dataIn=double(dataIn);
+                dataFilt1 = filtfilt(z1,p1,dataIn);
+                artifact_comp(comp_number,:) = dataFilt1';
+            end
         end
     end
 
