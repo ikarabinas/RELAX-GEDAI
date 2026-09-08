@@ -159,10 +159,11 @@ Made boundary-aware here: `RELAX_filtbutter.m` (optional 7th argument), `RELAX_b
 `RELAX_targeted_wICA.m`.
 
 **Still boundary-blind — `RELAX_check_boundary_support` errors if any of these is enabled on data with
-boundaries:** PREP `findNoisyChannels` (`Perform_PREP_bad_channel_rejection`, off by default — it tiles
-correlation windows flatly from sample 1 against a 1% `badTimeThreshold`, so ~9-11% of windows straddle
-a discontinuity on this data), MWF delay-stacking (`Do_MWF_*`), `Run_GEDAI`, the Butterworth notch,
-`Perform_wICA_on_ICLabel`, and the SER/ARR marking block (`ComputeSER_ARR`, off by default — its only
+boundaries:** PREP `findNoisyChannels` (`Perform_PREP_bad_channel_rejection`, off in the shipped
+entry-point config — the wrapper itself defaults an absent flag to on, for backward compatibility —
+it tiles correlation windows flatly from sample 1 against a 1% `badTimeThreshold`, so ~9-11% of
+windows straddle a discontinuity on this data), MWF delay-stacking (`Do_MWF_*`), `Run_GEDAI`, the
+Butterworth notch, `Perform_wICA_on_ICLabel`, and the SER/ARR marking block (`ComputeSER_ARR`, off by default — its only
 consumer `RELAX_metrics_final_SER_and_ARR` is commented out, and `RELAX_muscle`, `RELAX_horizontaleye`,
 `RELAX_drift` and `RELAX_pad_brief_mask_periods` would all need fixing first).
 

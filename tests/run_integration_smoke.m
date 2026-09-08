@@ -92,26 +92,8 @@ function run_integration_smoke()
     cleaned = dir(fullfile(cleanedDir, '*RELAX*.set'));
     assert(~isempty(cleaned), 'no cleaned file was written to %s', cleanedDir);
 
-    OUT = pop_loadset('filename', cleaned(1).name, 'filepath', cleanedDir);
+    assert_smoke_outcome(fullfile(cleanedDir, cleaned(1).name), ...
+                         fullfile(fixtureDir, 'boundary_fixture.set'));
 
-    % PREP was skipped, so its channel list must be empty
-    assert(isfield(OUT,'RELAXProcessingExtremeRejections'), 'missing RELAXProcessingExtremeRejections');
-    assert(isempty(OUT.RELAXProcessingExtremeRejections.PREPBasedChannelToReject), ...
-        'PREPBasedChannelToReject must be empty when PREP is skipped');
-
-    % The SER/ARR block was skipped, so its only product must be absent
-    assert(~isfield(OUT.RELAX,'NoiseMaskFullLengthR1'), ...
-        'NoiseMaskFullLengthR1 must be absent when ComputeSER_ARR=0');
-
-    % Boundaries must have survived cleaning
-    outSegments = RELAX_get_segments(OUT);
-    fprintf('Cleaned file has %d segments (%d boundaries).\n', ...
-        size(outSegments,1), size(outSegments,1)-1);
-    assert(size(outSegments,1) > 1, 'cleaned file lost all its boundary events');
-
-    assert(OUT.RELAX.Data_has_been_cleaned == 1, 'Data_has_been_cleaned must be 1');
-    assert(~any(isnan(OUT.data(:))), 'cleaned data must contain no NaNs');
-
-    fprintf('Retained channels: %d\n', OUT.nbchan);
     fprintf('run_integration_smoke: PASS\n');
 end

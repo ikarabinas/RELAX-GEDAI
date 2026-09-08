@@ -20,3 +20,17 @@ addpath('/home/nga4004/tools/eeglab2026.0.0'); eeglab nogui; \
 addpath('/home/nga4004/tools/eeglab2026.0.0/plugins/Fieldtrip-lite250523/'); \
 addpath(pwd); addpath(fullfile(pwd,'tests')); \
 run_integration_smoke"
+
+LOG="logs/boundary_smoke_${SLURM_JOB_ID}.log"
+
+# The in-MATLAB assertions cannot distinguish "PREP was skipped" from "PREP ran and found
+# nothing" - both leave PREPBasedChannelToReject empty. The log can.
+if ! grep -q "Skipping PREP findNoisyChannels" "$LOG"; then
+    echo "FAIL: log does not show PREP being skipped" >&2
+    exit 1
+fi
+if grep -q "Removing noisy channels:" "$LOG"; then
+    echo "FAIL: log shows PREP rejected channels - it was not skipped" >&2
+    exit 1
+fi
+echo "Confirmed from log: PREP findNoisyChannels was skipped."
