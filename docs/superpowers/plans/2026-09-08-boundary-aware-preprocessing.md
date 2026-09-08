@@ -1081,15 +1081,14 @@ function [maskStart, maskEnd] = RELAX_blink_mask_bounds(latency, halfWidth, segm
         segEnd   = segments(match,2);
     end
 
-    maskStart = max(round(latency - halfWidth), segStart);
-    maskEnd   = min(round(latency + halfWidth), segEnd);
+    % Clamp the peak into its own segment first. A real blink peak is always inside
+    % its segment already, so this is a no-op in practice; doing it up front means
+    % maskStart <= maskEnd holds structurally even in the fallback case of a latency
+    % that matched no segment.
+    peak = min(max(round(latency), segStart), segEnd);
 
-    % A blink peak always lies inside its own segment, so this cannot invert; the
-    % guard only covers the fallback case of a latency outside every segment.
-    if maskStart > maskEnd
-        maskStart = min(maskStart, segEnd);
-        maskEnd   = maskStart;
-    end
+    maskStart = max(peak - round(halfWidth), segStart);
+    maskEnd   = min(peak + round(halfWidth), segEnd);
 end
 ```
 
@@ -1707,6 +1706,7 @@ git commit -m "Apply wICA wavelets, filters and blink masks per inter-boundary s
 - Create: `tests/make_boundary_fixture.m`
 - Create: `tests/verify_epoching_drops_boundary_epochs.m`
 - Create: `tests/run_integration_smoke.sh`
+- Create: `tests/run_integration_smoke.m`
 - Modify: `CLAUDE.md` (add a "Boundary/discontinuity handling" section)
 
 **Interfaces:**
