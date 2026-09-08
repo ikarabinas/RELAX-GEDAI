@@ -41,7 +41,7 @@ Verified by reading the installed EEGLAB 2026.0.0 source. These need no change:
 
 `pop_epoch`'s behaviour is what protects `RELAX_epoching`,
 `RELAX_excluding_channels_and_epoching`, `RELAX_excluding_extreme_values`, `RELAX_muscle` and
-`RELAX_drift`: epochs that would straddle a gap never reach them. Step 6 below verifies this rather
+`RELAX_drift`: epochs that would straddle a gap never reach them. Step 5 below verifies this rather
 than assuming it.
 
 `RELAX_ICA_subtract` is also safe: it is ICA decomposition plus `pop_subcomp`, a purely spatial
@@ -55,7 +55,8 @@ On the currently configured path (`FilterType='Butterworth'`, `NotchFilterType='
 
 1. **`RELAX_filtbutter.m`** - a plain per-channel `filtfilt` over the whole record. Used for the
    1-200 Hz bandpass in the wrapper and for a 1-25 Hz bandpass inside `RELAX_blinks_IQR_method`.
-2. **PREP `findNoisyChannels`** - see below; the most damaging of the set.
+2. **PREP `findNoisyChannels`** - see below; the most damaging of the set. Resolved by skipping the
+   stage rather than fixing it (see "Decisions taken" 5).
 3. **`RELAX_blinks_IQR_method.m`** - inherits (1), plus `+/-400 ms` peak windows and `BlinkMaskFocus`
    mask spans that can cross boundaries.
 4. **`RELAX_targeted_wICA.m`** - four boundary-sensitive time-domain operations: a level-5 `coif5`
@@ -68,7 +69,7 @@ On the currently configured path (`FilterType='Butterworth'`, `NotchFilterType='
 
 Latent (same class of bug, currently disabled): MWF delay-stacking in
 `RELAX_perform_MWF_cleaning.m`, the Butterworth notch branch, `RELAX_wICA_on_ICLabel_artifacts.m`,
-and GEDAI.
+and GEDAI. PREP joins this list once Step 1 disables it.
 
 ### The SER/ARR marking block is dead code
 
@@ -94,8 +95,27 @@ removed."* Specifically:
 - It also runs a 45-50 Hz `filtfilt_fast` over the whole record (`findNoisyChannels.m:165-168`)
   before both the correlation and RANSAC stages, so every boundary step produces a transient.
 
-The consequence is that channel rejection on this data is close to arbitrary. This is a fix, not an
-accepted residual.
+The consequence is that channel rejection on this data is close to arbitrary.
+
+**Replacement detectors were considered and rejected.** `clean_rawdata`'s `clean_channels.m:83`
+computes `offsets = 1:window_len:S-window_len` - the same flat tiling from sample 1, so it has the
+identical bug; the same applies to `clean_windows` and ASR calibration. The one genuinely
+boundary-aware alternative available, `detect_and_remove_bad_channels` in
+`~/TMS_response_variability/iTBS_pipeline.m:1802` (fed by `compute_segment_windows`, which never
+emits a window crossing a boundary), is amplitude-only by its own docstring: it covers PREP's
+Method 1 and none of Methods 2-4.
+
+**RELAX already performs boundary-safe channel rejection of its own**, 30 lines after the PREP call:
+`RELAX_excluding_channels_and_epoching.m:313-342` rejects channels on the proportion of epochs
+flagged for extreme voltage shift, absolute voltage, improbable distribution and kurtosis, and
+`:397-434` rejects on muscle-contamination proportion. Both operate on `pop_epoch`-derived epochs, so
+boundary-crossing epochs never reach them. An amplitude-only replacement for PREP would therefore
+largely duplicate a step that already works correctly.
+
+The unique contribution of PREP here is thus Methods 2-4 (high-frequency-noise SNR, inter-channel
+correlation, RANSAC neighbour predictability), which is precisely what the boundary-aware alternative
+lacks. Rather than repair PREP's windowing or replace it with something weaker, the stage is skipped
+by default and moved to the deferred-and-guarded list.
 
 ## Decisions taken
 
@@ -108,6 +128,26 @@ accepted residual.
    avoids the `_iTBS`/`_bart` duplication problem described in `CLAUDE.md`.
 3. **Synthetic fixture with invariant assertions, then a real-file spot check** per step.
 4. **Fix the active path; defer, document and guard the rest.**
+5. **Skip PREP `findNoisyChannels` rather than fix it.** A new `RELAX_cfg` field disables the stage,
+   set to skip in `RELAX_SET_PARAMETERS_AND_RUN_slurm.m`, and `findNoisyChannels` joins the
+   deferred-and-guarded list alongside MWF, GEDAI and the Butterworth notch.
+
+### Consequences of decision 5
+
+- Channel rejection becomes less aggressive than in previous runs: channels PREP used to remove will
+  now go only if RELAX's own extreme-outlier or muscle-proportion criteria catch them. Given the
+  window-straddling analysis above, the channels PREP was removing on this data were partly
+  arbitrary, but the two runs are not comparable. Log the retained-channel count per file so the size
+  of the shift is visible.
+- Capability genuinely lost: detection of a channel that is decorrelated from its neighbours at
+  normal amplitude and normal kurtosis (PREP Methods 3-4). Partially mitigated for the
+  high-frequency-noise case (Method 2) because RELAX's muscle criterion is a log-log spectral slope
+  measure, so an electrode with elevated HF noise tends to be flagged as muscle-contaminated and
+  deleted anyway.
+- No struct-shape risk: `EEG.RELAXProcessingExtremeRejections.PREPBasedChannelToReject` is
+  initialised to `{}` and only populated when `noisyOut.noisyChannels.all` is non-empty, so skipping
+  the stage produces exactly the shape that an existing "PREP found nothing" run produces. The
+  `struct2table` aggregation across files is unaffected.
 
 ## Design
 
@@ -165,6 +205,13 @@ re-reference and wICA stages see more discontinuities than the filter stage did.
 `RELAX_SET_PARAMETERS_AND_RUN_slurm.m`. Every modified function checks the flag and takes the
 existing code path when it is `0` or absent.
 
+`RELAX_cfg.Perform_PREP_bad_channel_rejection`, set to `0` in
+`RELAX_SET_PARAMETERS_AND_RUN_slurm.m`. Positive-sense to match the existing `Perform_*` / `Run_*`
+convention and avoid a double negative. `RELAX_Wrapper_slurm.m` treats an **absent** field as `1`, so
+any other entry point reusing that wrapper keeps its current behaviour.
+
+`RELAX_cfg.ComputeSER_ARR`, default `0` - see Step 1a.
+
 ### Implementation steps
 
 Each step is implemented and tested before the next begins.
@@ -178,16 +225,27 @@ No behaviour change to the pipeline. Tests: segment splitting for integer and ha
 latencies; data with no events yields one segment; reflect-pad output shape and values; pad width
 clamping on short segments.
 
-#### Step 1 - Guard the dead SER/ARR block
+#### Step 1 - Disable the boundary-unsafe stages that are not needed
 
-Gate `RELAX_Wrapper_slurm.m:366-382` behind a new `RELAX_cfg.ComputeSER_ARR` flag defaulting to `0`,
-with a comment recording that `RELAX_muscle`, `RELAX_horizontaleye`, `RELAX_drift` and
-`RELAX_pad_brief_mask_periods` are boundary-blind and must be fixed before it is re-enabled.
+Two independent flag changes, both in `RELAX_Wrapper_slurm.m`, tested together.
 
-Done early because it simplifies the path that every later step runs through.
+**1a - the dead SER/ARR block.** Gate `RELAX_Wrapper_slurm.m:366-382` behind a new
+`RELAX_cfg.ComputeSER_ARR` flag defaulting to `0`, with a comment recording that `RELAX_muscle`,
+`RELAX_horizontaleye`, `RELAX_drift` and `RELAX_pad_brief_mask_periods` are boundary-blind and must be
+fixed before it is re-enabled.
 
-Test: run the wrapper on the fixture and assert `NoiseMaskFullLengthR1` is absent and all other
-outputs are unchanged.
+**1b - PREP bad-channel rejection.** Gate the `findNoisyChannels` call at
+`RELAX_Wrapper_slurm.m:324` behind `RELAX_cfg.Perform_PREP_bad_channel_rejection`, absent-defaulting
+to `1` in the wrapper and set to `0` in `RELAX_SET_PARAMETERS_AND_RUN_slurm.m`. Leave the
+`PREPBasedChannelToReject={}` initialisation in place so the skipped path produces the same struct
+shape as a run where PREP found nothing.
+
+Done early because it simplifies the path every later step runs through, and because between them
+these two flags remove five boundary-blind functions from the active path without any new algorithm.
+
+Tests: on the fixture, assert `NoiseMaskFullLengthR1` is absent, that `findNoisyChannels` is not
+called, that `PREPBasedChannelToReject` is an empty cell and `RELAXProcessingExtremeRejectionsAllParticipants`
+still builds, and that channel count changes only at `RELAX_excluding_channels_and_epoching`.
 
 #### Step 2 - `RELAX_filtbutter`
 
@@ -201,26 +259,7 @@ assertion still passes bitwise; otherwise drop it and leave the loop alone.
 
 Callers to opt in: the bandpass/highpass/lowpass calls in `RELAX_Wrapper_slurm.m`.
 
-#### Step 3 - PREP `findNoisyChannels`
-
-New file `RELAX_findNoisyChannels_by_segments.m`. `findNoisyChannels` returns *channel* indices, so a
-rearranged copy of the data can be fed to it and the result mapped straight back.
-
-1. Take the already segment-wise-highpassed data.
-2. Split into segments; trim each to a whole multiple of **5 s** - the LCM of
-   `correlationWindowSeconds` (1) and `ransacWindowSeconds` (5) - and drop segments shorter than 5 s.
-3. Demean each trimmed segment per channel, so the joins carry no DC step for PREP's 45-50 Hz FIR to
-   ring on.
-4. Concatenate into a temporary EEG struct and call `findNoisyChannels` **once**.
-5. Apply the returned channel list to the real EEG with `pop_select`.
-
-Every PREP window then lies wholly inside one original segment. Data budget: ~47 x 5 s plus the long
-segment gives ~270-370 s of the original 535 s, ample for channel detection. The ~37% discarded from
-each short segment is trim waste, not data removed from the recording.
-
-Called from `RELAX_Wrapper_slurm.m:324` when the flag is set.
-
-#### Step 4 - `RELAX_blinks_IQR_method`
+#### Step 3 - `RELAX_blinks_IQR_method`
 
 Pass `RELAX_cfg.RespectBoundaries` through to its internal `RELAX_filtbutter` call. Clamp the
 `+/-400 ms` peak-search windows and the `BlinkMaskFocus` mask spans so they cannot extend past the
@@ -229,7 +268,7 @@ end of the segment containing the blink.
 This function stays in the active path because `RELAX_targeted_wICA.m:297` consumes
 `EEG.RELAX.eyeblinkmask`.
 
-#### Step 5 - `RELAX_targeted_wICA`
+#### Step 4 - `RELAX_targeted_wICA`
 
 - Both `filtfilt` calls (0.5-25 Hz blink localisation, 15 Hz muscle) route through
   `RELAX_apply_by_segments`.
@@ -239,24 +278,25 @@ This function stays in the active path because `RELAX_targeted_wICA.m:297` consu
   then trim. 7930-sample segments support this comfortably.
 - Clamp the blink-padding loops and the `movmean` to segment extents.
 
-#### Step 6 - Verify the epoching stages
+#### Step 5 - Verify the epoching stages
 
 Assertions only, no code change expected. On the fixture, confirm that `pop_epoch` drops every
 boundary-crossing epoch; that `originallatency` bookkeeping stays aligned after
 `pop_select('notrial', ...)`; and that the resulting `NaNsForNonEvents` mask is NaN wherever an epoch
 was dropped. If any assertion fails, this becomes an implementation step.
 
-#### Step 7 - Guards and documentation
+#### Step 6 - Guards and documentation
 
 `RELAX_check_boundary_support(EEG, RELAX_cfg)` **errors** at startup when boundary events are present
 and any of the following is enabled:
 
+- `Perform_PREP_bad_channel_rejection` - flat window tiling from sample 1, see the analysis above
 - `Do_MWF_Once` / `Do_MWF_Twice` / `Do_MWF_Thrice` - delay-stacking in `RELAX_perform_MWF_cleaning`
   builds one lagged covariance across the whole record, so lags span boundaries
 - `Run_GEDAI`
 - `NotchFilterType = 'Butterworth'`
 - `Perform_wICA_on_ICLabel` - wavelet-based, same problem as targeted wICA
-- `ComputeSER_ARR` (the block guarded in Step 1)
+- `ComputeSER_ARR` - the block guarded in Step 1a
 
 `Perform_ICA_subtract` is safe and is **not** guarded.
 
@@ -285,13 +325,15 @@ Step-specific checks:
 | Step | Check |
 | --- | --- |
 | 0 | helper unit tests (above) |
-| 1 | `NoiseMaskFullLengthR1` absent; all other wrapper outputs unchanged |
+| 1 | `NoiseMaskFullLengthR1` absent; `findNoisyChannels` not called; `PREPBasedChannelToReject` empty and the stats table still builds; all other wrapper outputs unchanged |
 | 2 | a 10 Hz sine inside a segment survives the 1-200 Hz bandpass within 1% of standalone-segment filtering |
-| 3 | rejected-channel list before vs. after, on a real cropped file |
-| 4 | no blink mask span crosses a boundary; blink count per segment stable under the isolation test |
-| 5 | `iswt(swt(x))` reconstructs `x` per segment within tolerance; `artifact_comp` length preserved |
-| 6 | epoch-drop and `originallatency` assertions (above) |
-| 7 | guard errors when each deferred flag is set with boundaries present, and does not when they are not |
+| 3 | no blink mask span crosses a boundary; blink count per segment stable under the isolation test |
+| 4 | `iswt(swt(x))` reconstructs `x` per segment within tolerance; `artifact_comp` length preserved |
+| 5 | epoch-drop and `originallatency` assertions (above) |
+| 6 | guard errors when each deferred flag is set with boundaries present, and does not when they are not |
+
+On the real-file spot check after Step 1, record the retained-channel count per file so the effect of
+dropping PREP is visible against previous runs.
 
 After each step passes on the fixture, one spot check on a cropped real file before moving on.
 
@@ -303,7 +345,6 @@ New:
 - `RELAX_reflect_pad.m`
 - `RELAX_apply_by_segments.m`
 - `RELAX_check_boundary_support.m`
-- `RELAX_findNoisyChannels_by_segments.m`
 - `tests/make_boundary_fixture.m`, `tests/run_all_tests.m`, `tests/test_*.m`
 
 Modified:
@@ -317,6 +358,7 @@ Modified:
 
 Deferred, guarded, unmodified:
 
+- PREP `findNoisyChannels` (skipped by `Perform_PREP_bad_channel_rejection = 0`)
 - `RELAX_muscle.m`, `RELAX_drift.m`, `RELAX_horizontaleye.m`, `RELAX_pad_brief_mask_periods.m`
 - `RELAX_perform_MWF_cleaning.m`
 - `RELAX_wICA_on_ICLabel_artifacts.m`
