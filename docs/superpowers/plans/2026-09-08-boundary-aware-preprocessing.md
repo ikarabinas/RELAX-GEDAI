@@ -954,50 +954,83 @@ git commit -m "Make RELAX_filtbutter filter each inter-boundary segment separate
 ### Task 4: Boundary-aware `RELAX_blinks_IQR_method`
 
 **Files:**
+- Create: `RELAX_blink_mask_bounds.m`
 - Modify: `RELAX_blinks_IQR_method.m` (the two `RELAX_filtbutter` calls at lines 90 and 92; the blink-marking loop at lines 146-163)
-- Test: `tests/test_RELAX_blink_segment_clamp.m`
+- Test: `tests/test_RELAX_blink_mask_bounds.m`
 
 **Interfaces:**
 - Consumes: `RELAX_get_segments` from Task 1; the 7-argument `RELAX_filtbutter` from Task 3.
-- Produces: `[segStart, segEnd] = RELAX_blink_segment_bounds(latency, segments, nPoints)` in its own file, so the segment lookup is testable without EEGLAB. Returns `[1 nPoints]` when `latency` falls outside every segment.
+- Produces: `[maskStart, maskEnd] = RELAX_blink_mask_bounds(latency, halfWidth, segments, nPoints)` — returns the blink mask window centred on `latency`, extending `halfWidth` samples each way, truncated to the segment containing `latency`. Both outputs are integers, and `maskStart <= maskEnd` always holds.
 
-**Deliberate behaviour change, must be preserved:** the existing code sets `IQRmethodDetectedBlinks=0` for the whole file if *any* detected blink sits within 400 ms of the record edge. With ~8 s segments, clamping to segment edges would make that condition fire almost every time and wipe out blink detection entirely. On the boundary-aware path, a blink too close to its segment edge is skipped individually, and `IQRmethodDetectedBlinks` is only set to 0 when *no* blink could be marked. The legacy path keeps the original all-or-nothing behaviour untouched.
+**Behaviour on the boundary path:** every detected blink is marked, exactly as on the legacy path. A blink whose ±400 ms window would run past the edge of its segment has that window truncated to the segment, rather than being dropped. The mask and the `EyeBlinkLeftBase` / `EyeBlinkRightBase` events use the same truncated bounds so they stay consistent with each other; `EyeBlinkMax` is never moved. Truncating the base events is safe because nothing reads them — every consumer of blink events (`RELAX_excluding_channels_and_epoching.m:146`, `RELAX_excluding_extreme_values.m:74`, `RELAX_metrics_blinks.m:25`) epochs around `EyeBlinkMax` only.
+
+Because no blink is ever skipped, `IQRmethodDetectedBlinks` keeps the value the detection stage gave it; the legacy path's rule of zeroing it when a blink sits near the record edge does not apply on the boundary path, and the legacy branch is left untouched.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `tests/test_RELAX_blink_segment_clamp.m`:
+Create `tests/test_RELAX_blink_mask_bounds.m`:
 
 ```matlab
-function test_RELAX_blink_segment_clamp()
-% Segment lookup used to clamp blink masks to the segment containing the blink.
+function test_RELAX_blink_mask_bounds()
+% Blink mask windows, truncated to the segment containing the blink.
 
     segments = [1 4000; 4001 8000];
+    nPoints  = 8000;
+    hw       = 400; % half-width in samples
 
-    % A blink in the middle of segment 1
-    [s, e] = RELAX_blink_segment_bounds(2000, segments, 8000);
-    assert(s == 1 && e == 4000, 'blink in segment 1 must return segment 1 bounds');
+    % A blink well inside a segment is not truncated at all
+    [s, e] = RELAX_blink_mask_bounds(2000, hw, segments, nPoints);
+    assert(s == 1600 && e == 2400, 'interior blink must keep its full window');
 
-    % A blink in the middle of segment 2
-    [s, e] = RELAX_blink_segment_bounds(6000, segments, 8000);
-    assert(s == 4001 && e == 8000, 'blink in segment 2 must return segment 2 bounds');
+    % A blink near the end of segment 1 is truncated on the right
+    [s, e] = RELAX_blink_mask_bounds(3900, hw, segments, nPoints);
+    assert(s == 3500 && e == 4000, 'window must be truncated at the segment end');
 
-    % Exactly on a segment start
-    [s, e] = RELAX_blink_segment_bounds(4001, segments, 8000);
-    assert(s == 4001 && e == 8000, 'blink on a segment start belongs to that segment');
+    % A blink near the start of segment 2 is truncated on the left
+    [s, e] = RELAX_blink_mask_bounds(4100, hw, segments, nPoints);
+    assert(s == 4001 && e == 4500, 'window must be truncated at the segment start');
 
-    % Exactly on a segment end
-    [s, e] = RELAX_blink_segment_bounds(4000, segments, 8000);
-    assert(s == 1 && e == 4000, 'blink on a segment end belongs to that segment');
+    % Exactly on a segment start: belongs to that segment, truncated to it
+    [s, e] = RELAX_blink_mask_bounds(4001, hw, segments, nPoints);
+    assert(s == 4001 && e == 4401, 'blink on a segment start');
+
+    % Exactly on a segment end: belongs to the earlier segment
+    [s, e] = RELAX_blink_mask_bounds(4000, hw, segments, nPoints);
+    assert(s == 3600 && e == 4000, 'blink on a segment end');
+
+    % Truncation at the very start of the record, with one whole-record segment
+    [s, e] = RELAX_blink_mask_bounds(50, hw, [1 nPoints], nPoints);
+    assert(s == 1 && e == 450, 'window must be truncated at the record start');
+
+    % Truncation at the very end of the record
+    [s, e] = RELAX_blink_mask_bounds(nPoints-50, hw, [1 nPoints], nPoints);
+    assert(s == nPoints-450 && e == nPoints, 'window must be truncated at the record end');
 
     % A latency outside every segment falls back to the whole record
-    [s, e] = RELAX_blink_segment_bounds(99999, segments, 8000);
-    assert(s == 1 && e == 8000, 'out-of-range latency falls back to whole record');
+    [s, e] = RELAX_blink_mask_bounds(99999, hw, segments, nPoints);
+    assert(s == nPoints-hw && e == nPoints, 'out-of-range latency clamps to the record');
 
-    % A single whole-record segment behaves like the original global bounds
-    [s, e] = RELAX_blink_segment_bounds(500, [1 8000], 8000);
-    assert(s == 1 && e == 8000, 'single segment gives whole-record bounds');
+    % Degenerate case: a one-sample segment still yields a valid single-sample window
+    [s, e] = RELAX_blink_mask_bounds(10, hw, [10 10], nPoints);
+    assert(s == 10 && e == 10, 'one-sample segment yields a one-sample window');
 
-    fprintf('test_RELAX_blink_segment_clamp: PASS\n');
+    % Invariants that must hold for every case above
+    testLatencies = [1 50 2000 3900 4000 4001 4100 7999 8000];
+    for lat = testLatencies
+        [s, e] = RELAX_blink_mask_bounds(lat, hw, segments, nPoints);
+        assert(s <= e, 'maskStart must never exceed maskEnd (latency %d)', lat);
+        assert(s >= 1 && e <= nPoints, 'window must stay inside the record (latency %d)', lat);
+        assert(s == round(s) && e == round(e), 'bounds must be integers (latency %d)', lat);
+        % The window must lie wholly within one segment
+        inOne = any(segments(:,1) <= s & segments(:,2) >= e);
+        assert(inOne, 'window must lie inside a single segment (latency %d)', lat);
+    end
+
+    % Non-integer latencies (the caller passes o+I from a max search) are rounded
+    [s, e] = RELAX_blink_mask_bounds(2000.4, hw, segments, nPoints);
+    assert(s == round(2000.4-hw) && e == round(2000.4+hw), 'non-integer latency handled');
+
+    fprintf('test_RELAX_blink_mask_bounds: PASS\n');
 end
 ```
 
@@ -1009,31 +1042,35 @@ cd /home/nga4004/gitRepos/RELAX-GEDAI
 matlab -nodisplay -nosplash -batch "addpath(pwd); addpath(fullfile(pwd,'tests')); run_all_tests"
 ```
 
-Expected: `test_RELAX_blink_segment_clamp` FAILs with "Unrecognized function or variable 'RELAX_blink_segment_bounds'".
+Expected: `test_RELAX_blink_mask_bounds` FAILs with "Unrecognized function or variable 'RELAX_blink_mask_bounds'".
 
-- [ ] **Step 3: Write the segment-bounds helper**
+- [ ] **Step 3: Write the implementation**
 
-Create `RELAX_blink_segment_bounds.m`:
+Create `RELAX_blink_mask_bounds.m`:
 
 ```matlab
-% RELAX_blink_segment_bounds() - Return the bounds of the segment containing a sample.
+% RELAX_blink_mask_bounds() - Blink mask window, truncated to the segment containing
+%                             the blink.
 %
 % Usage:
-%   >> [segStart, segEnd] = RELAX_blink_segment_bounds(latency, segments, nPoints);
+%   >> [maskStart, maskEnd] = RELAX_blink_mask_bounds(latency, halfWidth, segments, nPoints);
 %
 % Inputs:
-%   latency  - sample index to locate
-%   segments - [nSegments x 2] matrix from RELAX_get_segments
-%   nPoints  - total samples in the record, used as the fallback range
+%   latency   - sample index of the blink peak (may be non-integer; it is rounded)
+%   halfWidth - how many samples to mark either side of the peak
+%   segments  - [nSegments x 2] matrix from RELAX_get_segments
+%   nPoints   - total samples in the record, used as the fallback range
 %
 % Outputs:
-%   segStart, segEnd - inclusive bounds of the segment containing `latency`, or
-%                      [1 nPoints] if it falls outside every segment.
+%   maskStart, maskEnd - inclusive integer bounds of the blink window, truncated to
+%                        the segment containing `latency`. maskStart <= maskEnd always.
 %
-% Used to keep blink masks and blink base events inside the stretch of continuous
-% data that the blink was actually detected in.
+% Every blink gets marked; a blink close to a discontinuity simply gets a shorter
+% window rather than being discarded. Truncating rather than dropping matters here
+% because the segments between boundary events are only ~8 s long, so a large share of
+% blinks sit within 400 ms of a segment edge.
 
-function [segStart, segEnd] = RELAX_blink_segment_bounds(latency, segments, nPoints)
+function [maskStart, maskEnd] = RELAX_blink_mask_bounds(latency, halfWidth, segments, nPoints)
 
     segStart = 1;
     segEnd   = nPoints;
@@ -1042,6 +1079,16 @@ function [segStart, segEnd] = RELAX_blink_segment_bounds(latency, segments, nPoi
     if ~isempty(match)
         segStart = segments(match,1);
         segEnd   = segments(match,2);
+    end
+
+    maskStart = max(round(latency - halfWidth), segStart);
+    maskEnd   = min(round(latency + halfWidth), segEnd);
+
+    % A blink peak always lies inside its own segment, so this cannot invert; the
+    % guard only covers the fallback case of a latency outside every segment.
+    if maskStart > maskEnd
+        maskStart = min(maskStart, segEnd);
+        maskEnd   = maskStart;
     end
 end
 ```
@@ -1092,7 +1139,7 @@ to:
 
 `EEGEyeOnly` is produced by `pop_select(EEG,'nochannel',...)`, which preserves `EEG.event`, so the boundary events are still present for `RELAX_get_segments` to find.
 
-- [ ] **Step 6: Clamp the blink marking loop to segments**
+- [ ] **Step 6: Truncate the blink marking loop to segments**
 
 In `RELAX_blinks_IQR_method.m`, replace this block (currently lines 146-163):
 
@@ -1121,36 +1168,26 @@ with:
     % Mark the blink peak into the event list:
     if continuousEEG.RELAX.IQRmethodDetectedBlinks==1
         if RespectBoundaries
-            % Clamp each blink's 400 ms bases to the stretch of continuous data the
-            % blink was detected in, so a blink near a discontinuity is not given a
-            % mask that runs across it.
-            %
-            % NOTE: unlike the legacy path below, a blink that will not fit inside its
-            % segment is skipped individually rather than cancelling blink detection for
-            % the whole file. With ~8 s segments the all-or-nothing rule would fire on
-            % almost every file and discard every blink.
+            % Every blink is marked. A blink whose 400 ms window would run past the edge
+            % of the stretch of continuous data it sits in has that window truncated to
+            % the segment, so no mask ever spans a discontinuity and no blink is lost.
+            % The base events use the same truncated bounds as the mask; nothing reads
+            % them (every consumer epochs around EyeBlinkMax), but keeping them
+            % consistent avoids events that point outside their own segment.
             blinkSegments = RELAX_get_segments(continuousEEG);
-            blinksMarked = 0;
+            blinkHalfWidth = 400/RELAX_cfg.ms_per_sample;
             for x=1:size(BlinkRunIndex,2)
-                [segStart, segEnd] = RELAX_blink_segment_bounds(BlinkMaxLatency(1,x), blinkSegments, size(EEG.data,2));
-                leftEdge  = round(BlinkMaxLatency(1,x)-400/RELAX_cfg.ms_per_sample);
-                rightEdge = round(BlinkMaxLatency(1,x)+400/RELAX_cfg.ms_per_sample);
-                if leftEdge > segStart && rightEdge < segEnd
-                    continuousEEG.event(size(continuousEEG.event,2)+1).type='EyeBlinkLeftBase';
-                    continuousEEG.event(size(continuousEEG.event,2)).latency=BlinkMaxLatency(1,x)-(400/RELAX_cfg.ms_per_sample);
-                    continuousEEG.event(size(continuousEEG.event,2)+1).type='EyeBlinkMax';
-                    continuousEEG.event(size(continuousEEG.event,2)).latency=BlinkMaxLatency(1,x);
-                    continuousEEG.event(size(continuousEEG.event,2)+1).type='EyeBlinkRightBase';
-                    continuousEEG.event(size(continuousEEG.event,2)).latency=BlinkMaxLatency(1,x)+(400/RELAX_cfg.ms_per_sample);
-                    continuousEEG.RELAXProcessing.Details.eyeblinkmask(leftEdge:rightEdge)=1;
-                    blinksMarked = blinksMarked + 1;
-                end
+                [maskStart, maskEnd] = RELAX_blink_mask_bounds(BlinkMaxLatency(1,x), ...
+                    blinkHalfWidth, blinkSegments, size(EEG.data,2));
+                continuousEEG.event(size(continuousEEG.event,2)+1).type='EyeBlinkLeftBase';
+                continuousEEG.event(size(continuousEEG.event,2)).latency=maskStart;
+                continuousEEG.event(size(continuousEEG.event,2)+1).type='EyeBlinkMax';
+                continuousEEG.event(size(continuousEEG.event,2)).latency=BlinkMaxLatency(1,x);
+                continuousEEG.event(size(continuousEEG.event,2)+1).type='EyeBlinkRightBase';
+                continuousEEG.event(size(continuousEEG.event,2)).latency=maskEnd;
+                continuousEEG.RELAXProcessing.Details.eyeblinkmask(maskStart:maskEnd)=1;
             end
-            fprintf('Marked %d of %d detected blinks (others fell too close to a segment edge).\n', ...
-                blinksMarked, size(BlinkRunIndex,2));
-            if blinksMarked == 0
-                continuousEEG.RELAX.IQRmethodDetectedBlinks=0;
-            end
+            fprintf('Marked %d blink(s), truncated to their segments where needed.\n', size(BlinkRunIndex,2));
         else
             for x=1:size(BlinkRunIndex,2) % v1.1.3 update, removed an erroneous "- 1" after size(BlinkRunIndex,2), thankyou Mana Biabani for the update
                 if (round(BlinkMaxLatency(1,x)-400/RELAX_cfg.ms_per_sample)>0) && (round(BlinkMaxLatency(1,x)+400/RELAX_cfg.ms_per_sample))<size(EEG.data,2) %v1.1.6 update to address issue for sample rates above 1000Hz
@@ -1184,8 +1221,8 @@ Expected: no syntax errors, `6/6 test files passed.`
 
 ```bash
 cd /home/nga4004/gitRepos/RELAX-GEDAI
-git add RELAX_blinks_IQR_method.m RELAX_blink_segment_bounds.m tests/test_RELAX_blink_segment_clamp.m
-git commit -m "Clamp blink masks and blink filtering to inter-boundary segments"
+git add RELAX_blinks_IQR_method.m RELAX_blink_mask_bounds.m tests/test_RELAX_blink_mask_bounds.m
+git commit -m "Truncate blink masks to their segment instead of spanning boundaries"
 ```
 
 ---

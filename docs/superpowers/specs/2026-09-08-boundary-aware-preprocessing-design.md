@@ -57,8 +57,9 @@ On the currently configured path (`FilterType='Butterworth'`, `NotchFilterType='
    1-200 Hz bandpass in the wrapper and for a 1-25 Hz bandpass inside `RELAX_blinks_IQR_method`.
 2. **PREP `findNoisyChannels`** - see below; the most damaging of the set. Resolved by skipping the
    stage rather than fixing it (see "Decisions taken" 5).
-3. **`RELAX_blinks_IQR_method.m`** - inherits (1), plus `+/-400 ms` peak windows and `BlinkMaskFocus`
-   mask spans that can cross boundaries.
+3. **`RELAX_blinks_IQR_method.m`** - inherits (1), plus the hardcoded `+/-400 ms` blink mask windows,
+   which can cross boundaries. (`RELAX_cfg.BlinkMaskFocus` is defaulted in this function but never
+   read; the mask width is the hardcoded 400 ms.)
 4. **`RELAX_targeted_wICA.m`** - four boundary-sensitive time-domain operations: a level-5 `coif5`
    `swt`/`iswt` over the concatenated record, a 0.5-25 Hz `filtfilt` for blink localisation, a 15 Hz
    `filtfilt` for muscle components, and blink-mask padding loops plus a `movmean` that walk across
@@ -261,9 +262,20 @@ Callers to opt in: the bandpass/highpass/lowpass calls in `RELAX_Wrapper_slurm.m
 
 #### Step 3 - `RELAX_blinks_IQR_method`
 
-Pass `RELAX_cfg.RespectBoundaries` through to its internal `RELAX_filtbutter` call. Clamp the
-`+/-400 ms` peak-search windows and the `BlinkMaskFocus` mask spans so they cannot extend past the
-end of the segment containing the blink.
+Pass `RELAX_cfg.RespectBoundaries` through to its internal `RELAX_filtbutter` call, and truncate each
+blink's hardcoded `+/-400 ms` mask window to the segment containing the blink peak.
+
+**Every blink is still marked.** A blink whose window would run past its segment edge gets a shorter
+window, not a dropped one. Truncating rather than skipping matters because the segments are only
+~8 s long, so a large share of blinks sit within 400 ms of an edge. The `EyeBlinkLeftBase` and
+`EyeBlinkRightBase` events are moved to the same truncated bounds as the mask; this is safe because
+nothing reads them - every consumer of blink events (`RELAX_excluding_channels_and_epoching.m:146`,
+`RELAX_excluding_extreme_values.m:74`, `RELAX_metrics_blinks.m:25`) epochs around `EyeBlinkMax` only,
+and `EyeBlinkMax` is never moved.
+
+Note the legacy path's rule of setting `IQRmethodDetectedBlinks=0` when a blink falls near the record
+edge does not apply on the boundary path, since no blink is ever skipped there. The legacy branch is
+left untouched.
 
 This function stays in the active path because `RELAX_targeted_wICA.m:297` consumes
 `EEG.RELAX.eyeblinkmask`.
@@ -327,7 +339,7 @@ Step-specific checks:
 | 0 | helper unit tests (above) |
 | 1 | `NoiseMaskFullLengthR1` absent; `findNoisyChannels` not called; `PREPBasedChannelToReject` empty and the stats table still builds; all other wrapper outputs unchanged |
 | 2 | a 10 Hz sine inside a segment survives the 1-200 Hz bandpass within 1% of standalone-segment filtering |
-| 3 | no blink mask span crosses a boundary; blink count per segment stable under the isolation test |
+| 3 | no blink mask span crosses a boundary; every detected blink is marked; mask bounds stay inside the record and never invert |
 | 4 | `iswt(swt(x))` reconstructs `x` per segment within tolerance; `artifact_comp` length preserved |
 | 5 | epoch-drop and `originallatency` assertions (above) |
 | 6 | guard errors when each deferred flag is set with boundaries present, and does not when they are not |
