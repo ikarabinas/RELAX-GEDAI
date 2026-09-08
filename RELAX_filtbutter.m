@@ -55,7 +55,7 @@
 % 28.5.2024 - NWB changed to include option to apply causal filters instead
 % of just acausal filters
 
-function EEG = RELAX_filtbutter(EEG, high, low, ord, type, causal_or_acausal_filter)
+function EEG = RELAX_filtbutter(EEG, high, low, ord, type, causal_or_acausal_filter, respect_boundaries)
 
 if nargin < 5
 	error('Not enough input arguments.');
@@ -63,6 +63,10 @@ end
 
 if exist('causal_or_acausal_filter', 'var')==0
         causal_or_acausal_filter='acausal';
+end
+
+if exist('respect_boundaries', 'var')==0
+        respect_boundaries=false;
 end
 
 %Check inputs
@@ -103,17 +107,49 @@ elseif strcmp(type,'lowpass')
 end
 
 data = double(EEG.data);
-temp = NaN(size(data,1),EEG.pnts,size(data,3));
-for x = 1:size(data,1) 
-    dataIn = data(x,:);
+
+if respect_boundaries && size(data,3)==1
+    % Filter each stretch of data between boundary events separately, with odd
+    % reflection padding at each segment edge. The padding width is set from the
+    % frequency that governs the filter's transient length: the low edge for a high
+    % pass or band pass, the cutoff for a low pass, and the stop-band width for a
+    % band stop (a notch rings at its bandwidth, not at its centre frequency).
+    segments = RELAX_get_segments(EEG);
+
+    if strcmp(type,'lowpass')
+        f_governing = low;
+    elseif strcmp(type,'stop')
+        f_governing = abs(low - high);
+    else % 'bandpass' or 'highpass'
+        f_governing = high;
+    end
+    if isempty(f_governing) || f_governing <= 0
+        f_governing = Fs/2;
+    end
+    padSamples = round(3*Fs/f_governing);
+
     if strcmpi(causal_or_acausal_filter,'causal')
-        dataFilt1 = filter(z1,p1,dataIn);
+        filterFn = @(d) filter(z1,p1,d,[],2);
+    else
+        filterFn = @(d) filtfilt(z1,p1,d')';
     end
-    if strcmpi(causal_or_acausal_filter,'acausal')
-        dataFilt1 = filtfilt(z1,p1,dataIn);
-    end
-    temp(x,:,:) = reshape(dataFilt1,1,EEG.pnts,[]);
-end 
+
+    temp = RELAX_apply_by_segments(data, segments, filterFn, padSamples);
+    fprintf('Filtering applied separately to %d segment(s) between boundary events (pad = %d samples).\n', ...
+        size(segments,1), padSamples);
+else
+    temp = NaN(size(data,1),EEG.pnts,size(data,3));
+    for x = 1:size(data,1) 
+        dataIn = data(x,:);
+        if strcmpi(causal_or_acausal_filter,'causal')
+            dataFilt1 = filter(z1,p1,dataIn);
+        end
+        if strcmpi(causal_or_acausal_filter,'acausal')
+            dataFilt1 = filtfilt(z1,p1,dataIn);
+        end
+        temp(x,:,:) = reshape(dataFilt1,1,EEG.pnts,[]);
+    end 
+end
 
 EEG.data = temp;
 

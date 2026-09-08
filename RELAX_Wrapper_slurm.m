@@ -196,6 +196,8 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     EEG.RELAX.Data_has_been_cleaned=0;
     RELAX_cfg.ms_per_sample=(1000/EEG.srate);
 
+    if ~isfield(RELAX_cfg,'RespectBoundaries'); RELAX_cfg.RespectBoundaries = 0; end
+
     % Fail fast if this file contains discontinuities and a boundary-blind stage is on:
     RELAX_check_boundary_support(EEG, RELAX_cfg);
 
@@ -231,16 +233,16 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
         if length(RELAX_cfg.LineNoiseFrequency) > 1
             for freq = RELAX_cfg.LineNoiseFrequency
                 % Apply butterworth filter: 
-                EEG = RELAX_filtbutter( EEG, freq-4, freq+4, 4, 'bandstop','acausal');
+                EEG = RELAX_filtbutter( EEG, freq-4, freq+4, 4, 'bandstop','acausal', RELAX_cfg.RespectBoundaries);
                 if ~isempty(RELAX_cfg.electrodes_2_keep_but_not_clean{1})
-                    Non_cleaned_electrodes = RELAX_filtbutter( Non_cleaned_electrodes, freq-4, freq+4, 4, 'bandstop','acausal');
+                    Non_cleaned_electrodes = RELAX_filtbutter( Non_cleaned_electrodes, freq-4, freq+4, 4, 'bandstop','acausal', RELAX_cfg.RespectBoundaries);
                 end
             end
         else
             % Apply butterworth filter 
-            EEG = RELAX_filtbutter( EEG, RELAX_cfg.LineNoiseFrequency-4, RELAX_cfg.LineNoiseFrequency+4, 4, 'bandstop','acausal');
+            EEG = RELAX_filtbutter( EEG, RELAX_cfg.LineNoiseFrequency-4, RELAX_cfg.LineNoiseFrequency+4, 4, 'bandstop','acausal', RELAX_cfg.RespectBoundaries);
             if ~isempty(RELAX_cfg.electrodes_2_keep_but_not_clean{1})
-                Non_cleaned_electrodes = RELAX_filtbutter( Non_cleaned_electrodes, RELAX_cfg.LineNoiseFrequency-4, RELAX_cfg.LineNoiseFrequency+4, 4, 'bandstop','acausal');
+                Non_cleaned_electrodes = RELAX_filtbutter( Non_cleaned_electrodes, RELAX_cfg.LineNoiseFrequency-4, RELAX_cfg.LineNoiseFrequency+4, 4, 'bandstop','acausal', RELAX_cfg.RespectBoundaries);
             end
         end
     end
@@ -257,13 +259,13 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     %% Band Pass filter data: 
     if strcmp(RELAX_cfg.LowPassFilterBeforeMWF,'no') % updated implementation, avoiding low pass filtering prior to MWF reduces chances of rank deficiencies, increasing potential values for MWF delay period 
         if strcmp(RELAX_cfg.FilterType,'Butterworth')
-            EEG = RELAX_filtbutter( EEG, RELAX_cfg.HighPassFilter, [], 4, 'highpass', RELAX_cfg.causal_or_acausal_filter);
+            EEG = RELAX_filtbutter( EEG, RELAX_cfg.HighPassFilter, [], 4, 'highpass', RELAX_cfg.causal_or_acausal_filter, RELAX_cfg.RespectBoundaries);
             if ~isempty(RELAX_cfg.electrodes_2_keep_but_not_clean{1})
                 % However, still low pass filter the auxilary electrodes, because they are not cleaned with MWF:
                 if (RELAX_cfg.HighPassFilter_aux_elecs~=RELAX_cfg.HighPassFilter) || (RELAX_cfg.LowPassFilter_aux_elecs~=RELAX_cfg.LowPassFilter)
                     disp('Applying filter settings to auxilary electrodes:')
                 end
-                Non_cleaned_electrodes = RELAX_filtbutter( Non_cleaned_electrodes, RELAX_cfg.HighPassFilter_aux_elecs, RELAX_cfg.LowPassFilter_aux_elecs, 4, 'bandpass', RELAX_cfg.causal_or_acausal_filter);
+                Non_cleaned_electrodes = RELAX_filtbutter( Non_cleaned_electrodes, RELAX_cfg.HighPassFilter_aux_elecs, RELAX_cfg.LowPassFilter_aux_elecs, 4, 'bandpass', RELAX_cfg.causal_or_acausal_filter, RELAX_cfg.RespectBoundaries);
             end
         end
         if strcmp(RELAX_cfg.FilterType,'pop_eegfiltnew')
@@ -280,12 +282,12 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     
     if strcmp(RELAX_cfg.LowPassFilterBeforeMWF,'yes') % original implementation, not recommended before MWF unless downsampling, as increases chances of rank deficiencies
         if strcmp(RELAX_cfg.FilterType,'Butterworth')
-            EEG = RELAX_filtbutter( EEG, RELAX_cfg.HighPassFilter, RELAX_cfg.LowPassFilter, 4, 'bandpass', RELAX_cfg.causal_or_acausal_filter);
+            EEG = RELAX_filtbutter( EEG, RELAX_cfg.HighPassFilter, RELAX_cfg.LowPassFilter, 4, 'bandpass', RELAX_cfg.causal_or_acausal_filter, RELAX_cfg.RespectBoundaries);
             if ~isempty(RELAX_cfg.electrodes_2_keep_but_not_clean{1})
                 if (RELAX_cfg.HighPassFilter_aux_elecs~=RELAX_cfg.HighPassFilter) || (RELAX_cfg.LowPassFilter_aux_elecs~=RELAX_cfg.LowPassFilter)
                     disp('Applying filter settings to auxilary electrodes:')
                 end
-                Non_cleaned_electrodes = RELAX_filtbutter( Non_cleaned_electrodes, RELAX_cfg.HighPassFilter_aux_elecs, RELAX_cfg.LowPassFilter_aux_elecs, 4, 'bandpass', RELAX_cfg.causal_or_acausal_filter);
+                Non_cleaned_electrodes = RELAX_filtbutter( Non_cleaned_electrodes, RELAX_cfg.HighPassFilter_aux_elecs, RELAX_cfg.LowPassFilter_aux_elecs, 4, 'bandpass', RELAX_cfg.causal_or_acausal_filter, RELAX_cfg.RespectBoundaries);
             end
         end
         if strcmp(RELAX_cfg.FilterType,'pop_eegfiltnew')
@@ -317,7 +319,7 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
         if ~isempty(RELAX_cfg.electrodes_2_keep_but_not_clean{1})
             % zapline plus won't fix the auxilary electrodes, so Butterworth filtering them instead:
             disp('Applying notch filter to auxilary electrodes as zapline will not work on them:')
-            Non_cleaned_electrodes = RELAX_filtbutter( Non_cleaned_electrodes, RELAX_cfg.LineNoiseFrequency-3, RELAX_cfg.LineNoiseFrequency+3, 4, 'bandstop','acausal');
+            Non_cleaned_electrodes = RELAX_filtbutter( Non_cleaned_electrodes, RELAX_cfg.LineNoiseFrequency-3, RELAX_cfg.LineNoiseFrequency+3, 4, 'bandstop','acausal', RELAX_cfg.RespectBoundaries);
         end
     end
 
@@ -669,7 +671,7 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     % filtering is not adversely affected by boundary elements.
     if strcmp(RELAX_cfg.LowPassFilterBeforeMWF,'no') % if low pass filtering wasn't applied before MWF cleaning (recommended) apply it here
         if strcmp(RELAX_cfg.FilterType,'Butterworth')
-            EEG = RELAX_filtbutter( EEG, [], RELAX_cfg.LowPassFilter, 4, 'lowpass', RELAX_cfg.causal_or_acausal_filter);
+            EEG = RELAX_filtbutter( EEG, [], RELAX_cfg.LowPassFilter, 4, 'lowpass', RELAX_cfg.causal_or_acausal_filter, RELAX_cfg.RespectBoundaries);
         end
         if strcmp(RELAX_cfg.FilterType,'pop_eegfiltnew')
             EEG = pop_eegfiltnew(EEG,[],RELAX_cfg.LowPassFilter);
