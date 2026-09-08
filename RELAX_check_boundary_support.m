@@ -27,6 +27,12 @@ function RELAX_check_boundary_support(EEG, RELAX_cfg)
 
     unsafe = {};
 
+    % Fields whose ABSENCE means "enabled". RELAX_Wrapper_slurm defaults an absent
+    % Perform_PREP_bad_channel_rejection to 1 so that callers predating the flag keep
+    % their original behaviour - which means an absent field here implies PREP WILL
+    % run, and must be guarded. Every other flag counts as disabled when absent.
+    enabledWhenAbsent = {'Perform_PREP_bad_channel_rejection'};
+
     flagChecks = { ...
         'Perform_PREP_bad_channel_rejection', 'PREP findNoisyChannels tiles its correlation windows flatly from sample 1, so windows straddle boundaries'; ...
         'Do_MWF_Once',                        'MWF delay-stacking builds one lagged covariance across the whole record, so lags span boundaries'; ...
@@ -38,7 +44,12 @@ function RELAX_check_boundary_support(EEG, RELAX_cfg)
 
     for k = 1:size(flagChecks,1)
         thisField = flagChecks{k,1};
-        if isfield(RELAX_cfg, thisField) && RELAX_cfg.(thisField) == 1
+        if isfield(RELAX_cfg, thisField)
+            thisEnabled = (RELAX_cfg.(thisField) == 1);
+        else
+            thisEnabled = any(strcmp(thisField, enabledWhenAbsent));
+        end
+        if thisEnabled
             unsafe{end+1} = sprintf('  RELAX_cfg.%s: %s', thisField, flagChecks{k,2}); %#ok<AGROW>
         end
     end

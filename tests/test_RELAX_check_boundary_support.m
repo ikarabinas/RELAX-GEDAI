@@ -54,8 +54,25 @@ function test_RELAX_check_boundary_support()
     cfg.Perform_ICA_subtract = 1;
     RELAX_check_boundary_support(EEG_with, cfg);
 
-    % Missing fields must be tolerated (treated as disabled), not error
-    RELAX_check_boundary_support(EEG_with, struct('Run_GEDAI', 0));
+    % An absent Perform_PREP_bad_channel_rejection means PREP will actually run (the
+    % wrapper defaults it to 1 for backward compatibility), so the guard must treat it
+    % as enabled and throw when boundaries are present.
+    cfg = rmfield(safe_cfg, 'Perform_PREP_bad_channel_rejection');
+    threw = false;
+    try
+        RELAX_check_boundary_support(EEG_with, cfg);
+    catch err
+        threw = true;
+        assert(strcmp(err.identifier, 'RELAX:boundaryUnsafeStage'), ...
+            'wrong error identifier for an absent PREP flag');
+    end
+    assert(threw, 'guard must throw when Perform_PREP_bad_channel_rejection is absent and boundaries are present');
+
+    % ...but the same config on data with no boundaries must still pass
+    RELAX_check_boundary_support(EEG_without, cfg);
+
+    % Every OTHER field is still tolerated as disabled when absent
+    RELAX_check_boundary_support(EEG_with, struct('Perform_PREP_bad_channel_rejection', 0));
 
     fprintf('test_RELAX_check_boundary_support: PASS\n');
 end
