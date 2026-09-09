@@ -387,6 +387,11 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
         end
     end
 
+    % Record the channel count retained through this point, so the effect of skipping
+    % PREP bad-channel rejection (RELAX_cfg.Perform_PREP_bad_channel_rejection=0, see
+    % above) is visible in the aggregated per-participant table, not just in stdout.
+    epochedEEG.RELAXProcessingExtremeRejections.RetainedChannelCount = epochedEEG.nbchan;
+
     % Record extreme artifact rejection details for all participants in single table:
     RELAXProcessingExtremeRejectionsAllParticipants(FileNumber,:) = struct2table(epochedEEG.RELAXProcessingExtremeRejections,'AsArray',true);
 

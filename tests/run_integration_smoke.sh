@@ -10,6 +10,15 @@
 
 # End-to-end smoke run of the boundary-aware pipeline on the cropped fixture.
 # Submit with: sbatch tests/run_integration_smoke.sh
+#
+# NOTE: the #SBATCH --output/--error directives above are evaluated by sbatch at
+# submission time, BEFORE any line of this script runs - so logs/ must already exist
+# at submission time or sbatch fails outright. The `mkdir -p logs` below only helps a
+# script that is re-run after logs/ has been removed; it cannot help the directives
+# above on first submission from a fresh clone. Run `mkdir -p logs` once yourself
+# (or `cd` to a checkout where it already exists) before `sbatch tests/run_integration_smoke.sh`.
+
+mkdir -p logs
 
 module load matlab
 

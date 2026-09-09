@@ -35,5 +35,27 @@ function test_RELAX_apply_by_segments()
     out3 = RELAX_apply_by_segments(data, [1 20], @(d) d*2, 3);
     assert(isequal(out3, data*2), 'single segment case');
 
+    % I1: a segment shorter than an explicitly-passed minSegmentLength is passed
+    % through UNCHANGED rather than handed to fn - a 3-sample island is too short for
+    % a stable filter/wavelet transform. The DEFAULT minSegmentLength is 1 (fn applies
+    % to every segment, see the assertions above), so this test opts into the skip
+    % path explicitly, exactly as RELAX_filtbutter.m and RELAX_targeted_wICA.m do for
+    % their filtfilt/wavelet calls. Suppress the expected warning so test output stays
+    % pristine, and restore the warning state afterwards even on failure.
+    warnState = warning('off', 'RELAX_apply_by_segments:segmentTooShort');
+    cleanupWarn = onCleanup(@() warning(warnState)); %#ok<NASGU>
+
+    dataShort = 1:200;
+    shortSegments = [1 100; 101 103; 104 200];
+    fnDestructive = @(d) -d; % would change every value it is applied to
+    outShort = RELAX_apply_by_segments(dataShort, shortSegments, fnDestructive, 5, 16);
+
+    assert(isequal(outShort(101:103), dataShort(101:103)), ...
+        'the 3-sample segment must be passed through byte-identically');
+    assert(isequal(outShort(1:100), -dataShort(1:100)), ...
+        'the 100-sample segment must still be transformed');
+    assert(isequal(outShort(104:200), -dataShort(104:200)), ...
+        'the 97-sample segment must still be transformed');
+
     fprintf('test_RELAX_apply_by_segments: PASS\n');
 end

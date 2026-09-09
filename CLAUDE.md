@@ -90,7 +90,8 @@ Stage order:
 3. **Band-pass filter & optional downsample** — `RELAX_filtbutter.m` or `pop_eegfiltnew`; order
    relative to MWF controlled by `RELAX_cfg.LowPassFilterBeforeMWF` (low-pass-before-MWF increases
    rank-deficiency risk and is not the recommended default).
-4. **Bad-channel rejection** — PREP's `findNoisyChannels`.
+4. **Bad-channel rejection** — PREP's `findNoisyChannels` (off by default in the SLURM path via
+   `RELAX_cfg.Perform_PREP_bad_channel_rejection=0`; see "Boundary/discontinuity handling" below).
 5. **Extreme-period marking** — `RELAX_excluding_channels_and_epoching.m` (or the `_iTBS` variant for
    TMS data with pulse artifacts) then `RELAX_excluding_extreme_values.m`; blink detection via
    `RELAX_blinks_IQR_method.m`.
@@ -145,8 +146,15 @@ each segment edge. Design and analysis:
 
 Helpers: `RELAX_get_segments.m` (segment list from `EEG.event`), `RELAX_reflect_pad.m` (odd reflection),
 `RELAX_apply_by_segments.m` (apply a function per segment), `RELAX_check_boundary_support.m` (startup
-guard). Callers must always re-derive the segment list from the *current* `EEG` — `eeg_eegrej` adds
-boundaries part-way through the wrapper.
+guard — see caveat below). Callers must always re-derive the segment list from the *current* `EEG` —
+`eeg_eegrej` adds boundaries part-way through the wrapper.
+
+`RELAX_check_boundary_support` runs once, at startup, on the freshly loaded file — it only sees
+discontinuities already present in the INPUT file. It is not re-checked later in the run, and
+`eeg_eegrej` adds more boundaries mid-pipeline (rejecting extreme periods) on essentially every file,
+so a clean pass at startup does not mean every later stage actually saw and handled every boundary a
+given run ends up with — it means the input file didn't already contain a combination the guard knows
+is unsafe.
 
 Boundary-aware without any change from us (verified against EEGLAB 2026.0.0 source): `pop_resample`
 (splits at boundaries), `clean_data_with_zapline_plus_eeglab_wrapper` (passes `boundaries` to zapline),
@@ -155,17 +163,19 @@ boundary — which is what protects `RELAX_epoching`, `RELAX_excluding_channels_
 `RELAX_excluding_extreme_values`, `RELAX_muscle` and `RELAX_drift`). `RELAX_ICA_subtract` is also safe:
 it is a purely spatial projection.
 
-Made boundary-aware here: `RELAX_filtbutter.m` (optional 7th argument), `RELAX_blinks_IQR_method.m`,
-`RELAX_targeted_wICA.m`.
+Made boundary-aware here: `RELAX_filtbutter.m` (optional 7th argument; this includes the Butterworth
+notch — its bandstop branch pads by the stop-band width rather than the centre frequency, since a
+notch rings at its bandwidth), `RELAX_blinks_IQR_method.m`, `RELAX_targeted_wICA.m`.
 
 **Still boundary-blind — `RELAX_check_boundary_support` errors if any of these is enabled on data with
-boundaries:** PREP `findNoisyChannels` (`Perform_PREP_bad_channel_rejection`, off in the shipped
-entry-point config — the wrapper itself defaults an absent flag to on, for backward compatibility —
-it tiles correlation windows flatly from sample 1 against a 1% `badTimeThreshold`, so ~9-11% of
-windows straddle a discontinuity on this data), MWF delay-stacking (`Do_MWF_*`), `Run_GEDAI`, the
-Butterworth notch, `Perform_wICA_on_ICLabel`, and the SER/ARR marking block (`ComputeSER_ARR`, off by default — its only
-consumer `RELAX_metrics_final_SER_and_ARR` is commented out, and `RELAX_muscle`, `RELAX_horizontaleye`,
-`RELAX_drift` and `RELAX_pad_brief_mask_periods` would all need fixing first).
+boundaries already present in the input file:** PREP `findNoisyChannels`
+(`Perform_PREP_bad_channel_rejection`, off in the shipped entry-point config — the wrapper itself
+defaults an absent flag to on, for backward compatibility — it tiles correlation windows flatly from
+sample 1 against a 1% `badTimeThreshold`, so ~9-11% of windows straddle a discontinuity on this data),
+MWF delay-stacking (`Do_MWF_*`), `Run_GEDAI`, `Perform_wICA_on_ICLabel`, and the SER/ARR marking block
+(`ComputeSER_ARR`, off by default — its only consumer `RELAX_metrics_final_SER_and_ARR` is commented
+out, and `RELAX_muscle`, `RELAX_horizontaleye`, `RELAX_drift` and `RELAX_pad_brief_mask_periods` would
+all need fixing first).
 
 Tests live in `tests/`. Run them with:
 `matlab -nodisplay -nosplash -batch "addpath(pwd); addpath(fullfile(pwd,'tests')); run_all_tests"`

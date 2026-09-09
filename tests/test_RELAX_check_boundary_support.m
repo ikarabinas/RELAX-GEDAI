@@ -37,17 +37,11 @@ function test_RELAX_check_boundary_support()
         RELAX_check_boundary_support(EEG_without, cfg);
     end
 
-    % The Butterworth notch is unsafe; ZaplinePlus and PMnotch are not checked here
+    % The Butterworth notch is boundary-aware (RELAX_filtbutter's bandstop branch pads
+    % by the stop-band width) and must NEVER be guarded
     cfg = safe_cfg;
     cfg.NotchFilterType = 'Butterworth';
-    threw = false;
-    try
-        RELAX_check_boundary_support(EEG_with, cfg);
-    catch err
-        threw = true;
-        assert(strcmp(err.identifier, 'RELAX:boundaryUnsafeStage'), 'wrong identifier for notch');
-    end
-    assert(threw, 'guard must throw for Butterworth notch with boundaries present');
+    RELAX_check_boundary_support(EEG_with, cfg);
 
     % Perform_ICA_subtract is spatial-only and must NEVER be guarded
     cfg = safe_cfg;

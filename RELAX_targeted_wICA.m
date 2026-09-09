@@ -244,7 +244,7 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
         RespectBoundaries = 0;
     end
     wICAsegments = RELAX_get_segments(EEG);
-    wavelet_pad_samples = 512; % coif5 level-5 support is about 30*2^4 = 480 samples
+    wavelet_pad_samples = 640; % coif5 level-5 support is about 30*2^4 = 480 samples; 512 gave only ~6% margin, so pad a bit further
 
     check_padding_required = mod(size(Component,2),2^5);
     if check_padding_required ~=0
@@ -272,8 +272,11 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
                 % Transform each segment separately. The threshold stays the one derived
                 % from the whole component above, so segmentation changes only where the
                 % wavelet basis is applied, not how aggressively it thresholds.
+                % minSegmentLength=16: see RELAX_filtbutter.m for the segLen>=5 floor
+                % derivation - a stationary wavelet transform is at least as
+                % length-sensitive as filtfilt, so the same explicit floor applies.
                 artifact_comp(comp_number,:) = RELAX_apply_by_segments(Component(comp_number,:), wICAsegments, ...
-                    @(d) RELAX_wavelet_denoise_segment(d, wavelet_threshold, threshold_type), wavelet_pad_samples);
+                    @(d) RELAX_wavelet_denoise_segment(d, wavelet_threshold, threshold_type), wavelet_pad_samples, 16);
             else
                 wavelet_transform = swt(padded_comp,5,'coif5'); % apply stationary wavelet transform to each component to reduce neural contribution to component
                 thresholded_wavelet_transform = wthresh(wavelet_transform,threshold_type,wavelet_threshold); % remove negligible values by applying thresholding
@@ -308,9 +311,11 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
         if ICsMostLikelyEye(comp_number)==1
             [z1, p1] = butter(2, [0.5 25]./(EEG.srate/2), 'bandpass');
             if RespectBoundaries
-                % Pad width from the 0.5 Hz low edge, which governs the transient length
+                % Pad width from the 0.5 Hz low edge, which governs the transient length.
+                % minSegmentLength=16: see RELAX_filtbutter.m for the segLen>=5 floor
+                % derivation this filtfilt call needs explicitly.
                 IC_filtered = RELAX_apply_by_segments(double(Component(comp_number,:)), wICAsegments, ...
-                    @(d) filtfilt(z1,p1,d')', round(3*EEG.srate/0.5));
+                    @(d) filtfilt(z1,p1,d')', round(3*EEG.srate/0.5), 16);
             else
                 dataIn=Component(comp_number,:)';
                 dataIn=double(dataIn);
@@ -358,9 +363,11 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
         if ICsMostLikelyMuscle(comp_number)==1
             [z1, p1] = butter(2, 15./(EEG.srate/2), 'high');
             if RespectBoundaries
-                % Pad width from the 15 Hz cutoff, which governs the transient length
+                % Pad width from the 15 Hz cutoff, which governs the transient length.
+                % minSegmentLength=16: see RELAX_filtbutter.m for the segLen>=5 floor
+                % derivation this filtfilt call needs explicitly.
                 artifact_comp(comp_number,:) = RELAX_apply_by_segments(double(Component(comp_number,:)), wICAsegments, ...
-                    @(d) filtfilt(z1,p1,d')', round(3*EEG.srate/15));
+                    @(d) filtfilt(z1,p1,d')', round(3*EEG.srate/15), 16);
             else
                 dataIn=Component(comp_number,:)';
                 dataIn=double(dataIn);

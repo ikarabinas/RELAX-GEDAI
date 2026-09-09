@@ -81,5 +81,25 @@ function test_RELAX_filtbutter_boundaries()
     bs = RELAX_filtbutter(EEG, 56, 64, 4, 'bandstop', 'acausal', true);
     assert(isequal(size(bs.data), size(signal)) && ~any(isnan(bs.data)), 'bandstop segment path');
 
+    % --- Multi-channel segment path matches per-channel filtering -----------------
+    % Production runs 257 channels; the segment path above is only exercised
+    % single-channel. Confirm the vectorised multi-channel path (filtfilt(z1,p1,d')')
+    % agrees with filtering each channel on its own to a tight numerical tolerance.
+    nChan = 8;
+    multiData = repmat(signal, nChan, 1) .* (1 + 0.1*(1:nChan)'); % distinct per-channel scale
+    EEG_multi = struct('data', multiData, 'srate', srate, 'pnts', nSamples, 'trials', 1, ...
+                 'event', struct('type', {'boundary'}, 'latency', {4000.5}));
+    out_multi = RELAX_filtbutter(EEG_multi, 1, 200, 4, 'bandpass', 'acausal', true);
+
+    out_perChannel = NaN(nChan, nSamples);
+    for ch = 1:nChan
+        EEG_ch = struct('data', multiData(ch,:), 'srate', srate, 'pnts', nSamples, 'trials', 1, ...
+                     'event', struct('type', {'boundary'}, 'latency', {4000.5}));
+        out_ch = RELAX_filtbutter(EEG_ch, 1, 200, 4, 'bandpass', 'acausal', true);
+        out_perChannel(ch,:) = out_ch.data;
+    end
+    assert(max(abs(out_multi.data(:) - out_perChannel(:))) < 1e-10, ...
+        'multi-channel segment-path output must match per-channel filtering to ~1e-10');
+
     fprintf('test_RELAX_filtbutter_boundaries: PASS\n');
 end

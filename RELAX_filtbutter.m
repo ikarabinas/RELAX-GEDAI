@@ -129,12 +129,27 @@ if respect_boundaries && size(data,3)==1
     padSamples = round(3*Fs/f_governing);
 
     if strcmpi(causal_or_acausal_filter,'causal')
+        % NOTE: reflect-padding a causal filter breaks its causality guarantee, because
+        % the reflected samples appended after the segment end are mirrored copies of
+        % samples from BEFORE that point - so filter() output near a segment's start
+        % would depend on samples that occur later in time. causal_or_acausal_filter is
+        % 'acausal' throughout this codebase today (see RELAX_SET_PARAMETERS_AND_RUN*),
+        % so this is latent, but causal filtering exists specifically to prevent
+        % post-stimulus activity from leaking backwards - reflect-padding it would
+        % reintroduce exactly that leak. If this branch is ever exercised with
+        % respect_boundaries=true, it needs one-sided (not reflection) padding instead.
         filterFn = @(d) filter(z1,p1,d,[],2);
     else
         filterFn = @(d) filtfilt(z1,p1,d')';
     end
 
-    temp = RELAX_apply_by_segments(data, segments, filterFn, padSamples);
+    % minSegmentLength=16: RELAX_apply_by_segments defaults to applying fn to every
+    % segment, however short - fine for a generic/pointwise fn, but filtfilt is not
+    % generic. RELAX_reflect_pad clamps the pad to segLen-1, so a segment shorter than
+    % the requested pad gets a padded length of 3*segLen-2 (worst case). filtfilt on an
+    % order-4 filter needs a signal longer than 3*(order)=12 samples, so segLen>=5 is
+    % the true floor (3*5-2=13>12); 16 gives >3x that margin without being arbitrary.
+    temp = RELAX_apply_by_segments(data, segments, filterFn, padSamples, 16);
     fprintf('Filtering applied separately to %d segment(s) between boundary events (pad = %d samples).\n', ...
         size(segments,1), padSamples);
 else

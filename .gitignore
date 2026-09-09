@@ -21,3 +21,6 @@
 
 # Real-data test fixtures (large, derived from real recordings)
 tests/fixtures/
+
+# SLURM job logs (tests/run_integration_smoke.sh output/error)
+logs/
