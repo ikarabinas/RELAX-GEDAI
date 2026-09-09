@@ -20,8 +20,17 @@ addpath('/home/nga4004/tools/eeglab2026.0.0'); eeglab nogui; \
 addpath('/home/nga4004/tools/eeglab2026.0.0/plugins/Fieldtrip-lite250523/'); \
 addpath(pwd); addpath(fullfile(pwd,'tests')); \
 run_integration_smoke"
+MATLAB_STATUS=$?
 
 LOG="logs/boundary_smoke_${SLURM_JOB_ID}.log"
+
+# Fail on MATLAB's own exit status FIRST. The greps below only prove PREP was skipped,
+# which is logged early in the run - they say nothing about whether the rest of the
+# pipeline or the assert_smoke_outcome checks succeeded.
+if [ $MATLAB_STATUS -ne 0 ]; then
+    echo "FAIL: MATLAB exited with status $MATLAB_STATUS" >&2
+    exit $MATLAB_STATUS
+fi
 
 # The in-MATLAB assertions cannot distinguish "PREP was skipped" from "PREP ran and found
 # nothing" - both leave PREPBasedChannelToReject empty. The log can.
