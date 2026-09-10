@@ -10,12 +10,13 @@ This is a COMPLETE mirror of the upstream tree, not a partial one. Every file is
 upstream's, byte for byte, except:
 
   - the 4 customized files listed below,
-  - this file.
+  - this file,
+  - `pwelch_segmented.m`, a file with no upstream counterpart at all (see
+    "Changes made by this plan" below).
 
-(At this commit, `pwelch_segmented` is still a local subfunction at the bottom of
-`clean_data_with_zapline_plus.m`, not a file of its own - Task 2 of this plan moves
-it into its own `pwelch_segmented.m`, which will then be a third kind of exception:
-a file with no upstream counterpart at all. See "Changes made by this plan" below.)
+(As of this commit, `pwelch_segmented` has been moved out of the bottom of
+`clean_data_with_zapline_plus.m`, where it started as a local subfunction, into
+that file of its own - Task 2 of this plan.)
 
 `RELAX_add_vendored_zapline.m` prepends this directory to the MATLAB path so these
 copies shadow the EEGLAB plugin's. Because the mirror is complete, RELAX no longer
