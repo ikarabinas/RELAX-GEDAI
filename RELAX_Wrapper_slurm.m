@@ -324,10 +324,10 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     end
 
     if strcmp(RELAX_cfg.NotchFilterType,'ZaplinePlus')
-        zaplineConfig = struct('plotResults',0,
-                               'detectionWinsize', 5,
-                               'detailedFreqBoundsUpper', [-0.2 0.2],
-                               'detailedFreqBoundsLower', [-0.8 0.2],
+        zaplineConfig = struct('plotResults',0, ...
+                               'detectionWinsize', 5, ...
+                               'detailedFreqBoundsUpper', [-0.2 0.2], ...
+                               'detailedFreqBoundsLower', [-0.8 0.2], ...
                                'searchIndividualNoise', false);
         [EEG ] = clean_data_with_zapline_plus_eeglab_wrapper(EEG, zaplineConfig); % requires the zapline plus plugin. Best applied after downsampling to 250Hz or 500Hz.
         if ~isempty(RELAX_cfg.electrodes_2_keep_but_not_clean{1})
