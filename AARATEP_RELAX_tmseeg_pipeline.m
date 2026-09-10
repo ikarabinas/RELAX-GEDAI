@@ -444,6 +444,10 @@ if strcmp(config.DownSample, 'yes')
 end
 
 if strcmp(config.NotchFilterType, 'ZaplinePlus')
+    % Put the vendored, boundary-fixed zapline-plus ahead of the EEGLAB plugin copy.
+    % Must come after eeglab(), which prepends its own plugin directories.
+    RELAX_add_vendored_zapline();
+
     [EEG] = clean_data_with_zapline_plus_eeglab_wrapper(EEG, struct('plotResults', 0));
     
     if config.doDebug

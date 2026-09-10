@@ -660,6 +660,10 @@ if (strcmp(RELAX_cfg.ICA_method,'amica')) && (exist('runamica15','file')==0)
     warndlg('AMICA may not be installed. Plugin can be installed via EEGLAB: "File" > "Manage EEGLAB Extensions"','AMICA not installed');
 end
 
+% Put the vendored, boundary-fixed zapline-plus ahead of the EEGLAB plugin copy.
+% Must come after eeglab(), which prepends its own plugin directories.
+RELAX_add_vendored_zapline();
+
 if (strcmp(RELAX_cfg.NotchFilterType,'ZaplinePlus')) && (exist('clean_data_with_zapline_plus_eeglab_wrapper','file')==0)
     warndlg('ZaplinePlus may not be installed. Plugin can be installed via EEGLAB: "File" > "Manage EEGLAB Extensions"','ZaplinePlus not installed');
 end

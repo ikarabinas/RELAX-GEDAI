@@ -143,6 +143,10 @@ addpath('/home/imk2003/Documents/MATLAB/eeglab/plugins/FastICA_25/');
 % Specify  RELAX folder location (this toolbox):
 addpath('/home/imk2003/Documents/MATLAB/eeglab/plugins/RELAX/');
 
+% Put the vendored, boundary-fixed zapline-plus ahead of the EEGLAB plugin copy.
+% Must come after eeglab(), which prepends its own plugin directories.
+RELAX_add_vendored_zapline();
+
 % Specify your electrode locations with the correct cap file:
 RELAX_cfg.caploc=[]; % path containing electrode positions. Set to =[] if electrode locations are already in your EEG file.
 

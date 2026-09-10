@@ -1,0 +1,24 @@
+function RELAX_add_vendored_zapline()
+% RELAX_ADD_VENDORED_ZAPLINE - put the vendored zapline-plus ahead of the EEGLAB plugin.
+%
+% The EEGLAB plugin copy of zapline-plus is boundary-blind and crashes on data whose
+% inter-boundary segments are short (see
+% docs/superpowers/plans/2026-09-09-zapline-nfft-grid-fix.md). vendor/zapline-plus
+% holds rebased, fixed copies of the four files that needed changing. Call this AFTER
+% eeglab(), because eeglab() prepends its own plugin directories to the path.
+
+    vendorDir = fullfile(fileparts(mfilename('fullpath')), 'vendor', 'zapline-plus');
+    if ~isfolder(vendorDir)
+        error('RELAX_add_vendored_zapline:missing', 'Vendored zapline-plus not found at %s', vendorDir);
+    end
+
+    addpath(vendorDir);  % addpath prepends, so this wins over the plugin directory
+
+    resolved = which('clean_data_with_zapline_plus');
+    if ~strncmp(resolved, vendorDir, numel(vendorDir))
+        error('RELAX_add_vendored_zapline:shadowed', ...
+            ['clean_data_with_zapline_plus resolves to\n  %s\ninstead of the vendored copy in\n  %s\n' ...
+             'Something re-prepended the EEGLAB plugin path after this call - move the ' ...
+             'RELAX_add_vendored_zapline() call to after the last eeglab() invocation.'], resolved, vendorDir);
+    end
+end
