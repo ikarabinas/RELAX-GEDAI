@@ -1,8 +1,9 @@
 function RELAX_add_vendored_zapline()
 % RELAX_ADD_VENDORED_ZAPLINE - put the vendored zapline-plus ahead of the EEGLAB plugin.
 %
-% The EEGLAB plugin copy of zapline-plus is boundary-blind and crashes on data whose
-% inter-boundary segments are short (see
+% The EEGLAB plugin copy of zapline-plus is boundary-aware (it passes boundaries through
+% to zapline) but still crashes on data whose inter-boundary segments are short, because
+% its pwelch frequency grid is not pinned (see
 % docs/superpowers/plans/2026-09-09-zapline-nfft-grid-fix.md). vendor/zapline-plus
 % holds rebased, fixed copies of the four files that needed changing. Call this AFTER
 % eeglab(), because eeglab() prepends its own plugin directories to the path.

@@ -71,11 +71,13 @@ epoching step from the GUI; `pop_RELAX_help.m` / `pop_RELAX_citation.m` are info
 - ERPLAB, if `RELAX_cfg.NotchFilterType='PMnotch'`
 
 zapline-plus is **no longer** an external dependency when `RELAX_cfg.NotchFilterType='ZaplinePlus'`: the
-complete upstream tree (`f4628a3`) is vendored under `vendor/zapline-plus/`, with 4 files carrying local
-boundary customizations plus one new file (`pwelch_segmented.m`) with no upstream counterpart — see
+complete upstream tree (`f4628a3`) is vendored under `vendor/zapline-plus/`, with 4 files patched (3
+carrying local boundary customizations, 1 an unrelated carried-forward fix) plus one new file
+(`pwelch_segmented.m`) with no upstream counterpart — see
 `vendor/zapline-plus/VENDORING.md`. Entry points must call `RELAX_add_vendored_zapline()` after
 `eeglab()` so this directory is prepended to the path ahead of the EEGLAB plugin's copy; without that
-call, MATLAB resolves the plugin's boundary-blind, nfft-grid-bug copy instead. Leaving the zapline-plus
+call, MATLAB resolves the plugin's copy instead, which is boundary-aware but still has the nfft-grid
+bug (see "Boundary/discontinuity handling" below). Leaving the zapline-plus
 EEGLAB plugin installed is harmless and is what keeps zapline-plus available on EEGLAB's own menus.
 
 ## Pipeline architecture (`RELAX_Wrapper.m` / `RELAX_Wrapper_slurm.m` / `RELAX_Wrapper_bart.m`)
