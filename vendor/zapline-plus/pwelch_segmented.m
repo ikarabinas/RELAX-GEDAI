@@ -39,7 +39,7 @@ function [pxx, f] = pwelch_segmented(data, window, noverlap, nfft, fs, boundarie
         nfft = max(nfft, 2^nextpow2(length(window)));
     end
 
-    if isempty(boundaries) || length(boundaries) < 2
+    if isempty(boundaries) || length(boundaries) < 1
         [pxx, f] = pwelch(data, window, noverlap, nfft, fs);
         return;
     end

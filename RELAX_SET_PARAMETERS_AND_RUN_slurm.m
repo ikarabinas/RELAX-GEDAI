@@ -193,7 +193,7 @@ else
 end
 
 task_id = str2double(getenv('SLURM_ARRAY_TASK_ID'));
-if isnan(task_id); task_id = 1; end
+if isnan(task_id); task_id = 7; end
 if task_id > numel(uniqueParticipants)
     fprintf('Array task %d has no participant to process (only %d participants).\n', task_id, numel(uniqueParticipants));
     return
@@ -326,6 +326,16 @@ RELAX_cfg.Run_GEDAI=0;  % IMK added
 % docs/superpowers/specs/2026-09-08-boundary-aware-preprocessing-design.md
 RELAX_cfg.RespectBoundaries=1; % 1 = process each stretch of data between boundary events separately, with reflection-padded edges
 RELAX_cfg.Perform_PREP_bad_channel_rejection=0; % 0 = skip PREP findNoisyChannels (boundary-blind); RELAX_excluding_channels_and_epoching still rejects bad channels boundary-safely
+
+% Reject electrodes whose recorded impedance says the contact was bad, before any
+% data-driven screen sees them. The impedance is written into EEG.chanlocs at import by
+% attach_mff_impedance (TMS_response_variability repo) and survives into these .set files;
+% a file without it rejects nothing and says so. The limit matches the
+% BAD_CHAN_MAX_IMPEDANCE_KOHM that remove_TMS_artifact already treats as a dead electrode,
+% so the two stages agree on which contacts failed. Rejected channels are interpolated
+% back before saving (see InterpolateRejectedElectrodesAfterCleaning below).
+RELAX_cfg.Perform_impedance_bad_channel_rejection=1; % 1 = reject channels over MaxImpedanceKOhm, 0 = skip
+RELAX_cfg.MaxImpedanceKOhm=500; % kOhm. Strictly greater-than; an unknown (NaN) impedance is never rejected
 RELAX_cfg.ComputeSER_ARR=0; % 0 = skip the SER/ARR artifact marking block (its only consumer, RELAX_metrics_final_SER_and_ARR, is commented out, and the marking functions are boundary-blind)
 
 RELAX_cfg.Do_MWF_Once=0; % 1 = Perform the MWF cleaning a second time (1 for yes, 0 for no).

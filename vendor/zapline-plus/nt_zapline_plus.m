@@ -105,10 +105,10 @@ if isfield(p, 'boundaries') && ~isempty(p.boundaries)
     b = unique([1; p.boundaries(:); size(x, 1) + 1]);
     for i = 1:length(b)-1
         idx = b(i):b(i+1)-1;
-        xx(idx, :) = nt_smooth(x(idx, :), 1/fline, p.niterations);
+        xx(idx, :) = nt_smooth(x(idx, :), 1/fline, p.niterations, 1);
     end
 else
-    xx=nt_smooth(x,1/fline,p.niterations); % cancels line_frequency and harmonics, light lowpass
+    xx=nt_smooth(x,1/fline,p.niterations,1); % cancels line_frequency and harmonics, light lowpass
 end
 
 if isempty(p.nkeep); p.nkeep=size(x,2); end

@@ -324,12 +324,65 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     end
 
     if strcmp(RELAX_cfg.NotchFilterType,'ZaplinePlus')
-        [EEG ] = clean_data_with_zapline_plus_eeglab_wrapper(EEG,struct('plotResults',0)); % requires the zapline plus plugin. Best applied after downsampling to 250Hz or 500Hz.
+        zaplineConfig = struct('plotResults',0,
+                               'detectionWinsize', 5,
+                               'detailedFreqBoundsUpper', [-0.2 0.2],
+                               'detailedFreqBoundsLower', [-0.8 0.2],
+                               'searchIndividualNoise', false);
+        [EEG ] = clean_data_with_zapline_plus_eeglab_wrapper(EEG, zaplineConfig); % requires the zapline plus plugin. Best applied after downsampling to 250Hz or 500Hz.
         if ~isempty(RELAX_cfg.electrodes_2_keep_but_not_clean{1})
             % zapline plus won't fix the auxilary electrodes, so Butterworth filtering them instead:
             disp('Applying notch filter to auxilary electrodes as zapline will not work on them:')
             Non_cleaned_electrodes = RELAX_filtbutter( Non_cleaned_electrodes, RELAX_cfg.LineNoiseFrequency-3, RELAX_cfg.LineNoiseFrequency+3, 4, 'bandstop','acausal', RELAX_cfg.RespectBoundaries);
         end
+    end
+
+    %% Reject bad electrodes on recorded impedance:
+    % Runs BEFORE PREP, and the order is the point. findNoisyChannels builds a robust
+    % average reference and channel-to-channel correlations across the whole montage, so
+    % a dead electrode skews its verdict on every OTHER channel, not just on itself.
+    % Screening first means PREP never sees a channel already known to be a bad contact.
+    %
+    % The impedance is metadata written at import by attach_mff_impedance (in the
+    % TMS_response_variability repo) and rides through pop_saveset in .chanlocs, so this
+    % reads nothing from the data and is unaffected by boundaries.
+    %
+    % Absent = off: unlike Perform_PREP_bad_channel_rejection this is new behaviour, and
+    % must not switch itself on for a dataset whose files carry no impedances.
+    if ~isfield(RELAX_cfg,'Perform_impedance_bad_channel_rejection')
+        RELAX_cfg.Perform_impedance_bad_channel_rejection = 0;
+    end
+    if ~isfield(RELAX_cfg,'MaxImpedanceKOhm')
+        RELAX_cfg.MaxImpedanceKOhm = 500; % matches BAD_CHAN_MAX_IMPEDANCE_KOHM upstream
+    end
+    if ~isfield(RELAX_cfg,'MaxProportionOfElectrodesThatCanBeDeleted')
+        % RELAX_excluding_channels_and_epoching defaults this too, but only later, and the
+        % cap below needs it now. Same default as there:
+        RELAX_cfg.MaxProportionOfElectrodesThatCanBeDeleted = 0.10;
+    end
+    EEG.RELAXProcessingExtremeRejections.ImpedanceBasedChannelToReject={};
+    if RELAX_cfg.Perform_impedance_bad_channel_rejection == 1
+        % Capped by the same budget RELAX_excluding_channels_and_epoching spends, so the
+        % two channel-rejection stages cannot between them delete more of the montage
+        % than MaxProportionOfElectrodesThatCanBeDeleted allows.
+        [ImpedanceBasedChannelToReject, ImpedanceScreenInfo] = RELAX_impedance_bad_channels( ...
+            EEG.chanlocs, RELAX_cfg.MaxImpedanceKOhm, RELAX_cfg.MaxProportionOfElectrodesThatCanBeDeleted);
+        EEG.RELAXProcessingExtremeRejections.ImpedanceBasedChannelToReject = ImpedanceBasedChannelToReject;
+        EEG.RELAX.ImpedanceScreen = ImpedanceScreenInfo;
+        if ~ImpedanceScreenInfo.available
+            warning('No usable impedances in %s - no channels rejected on impedance.', FileName);
+        elseif isempty(ImpedanceBasedChannelToReject)
+            fprintf('Impedance screen: no channels over %g kOhm (median %.1f, max %.1f).\n', ...
+                RELAX_cfg.MaxImpedanceKOhm, ImpedanceScreenInfo.medianImpedance, ImpedanceScreenInfo.maxImpedance);
+        else
+            fprintf('Impedance screen: removing %d channel(s) over %g kOhm: %s\n', ...
+                numel(ImpedanceBasedChannelToReject), RELAX_cfg.MaxImpedanceKOhm, ...
+                strjoin(ImpedanceBasedChannelToReject', ', '));
+            EEG=pop_select(EEG,'nochannel',ImpedanceBasedChannelToReject);
+            EEG = eeg_checkset( EEG );
+        end
+    else
+        fprintf('Skipping impedance-based channel rejection (RELAX_cfg.Perform_impedance_bad_channel_rejection=0).\n');
     end
 
     %% Clean flat channels and bad channels showing improbable data:
@@ -393,7 +446,17 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     epochedEEG.RELAXProcessingExtremeRejections.RetainedChannelCount = epochedEEG.nbchan;
 
     % Record extreme artifact rejection details for all participants in single table:
-    RELAXProcessingExtremeRejectionsAllParticipants(FileNumber,:) = struct2table(epochedEEG.RELAXProcessingExtremeRejections,'AsArray',true);
+    ExtremeRejectionsRow = struct2table(epochedEEG.RELAXProcessingExtremeRejections,'AsArray',true);
+    % Via RELAX_append_table_row, because a table checkpointed by an earlier version of
+    % this wrapper can be missing columns this version writes
+    % (ImpedanceBasedChannelToReject was added after some runs had already been
+    % checkpointed) and plain row assignment errors on a differing variable set, which
+    % would break resuming a partially processed participant:
+    if ~exist('RELAXProcessingExtremeRejectionsAllParticipants','var')
+        RELAXProcessingExtremeRejectionsAllParticipants = [];
+    end
+    RELAXProcessingExtremeRejectionsAllParticipants = RELAX_append_table_row( ...
+        RELAXProcessingExtremeRejectionsAllParticipants, FileNumber, ExtremeRejectionsRow);
 
     rawEEG=continuousEEG; % Take a copy of the not yet cleaned data for calculation of all cleaning SER and ARR at the end
     
@@ -855,6 +918,18 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     else
         EEG.RELAX_issues_to_check.PREP_rejected_too_many_electrodes=0;
     end
+    % The impedance screen enforces the cap itself, so its rejection count can never
+    % exceed the budget. What is worth flagging is the cap having FIRED - that means more
+    % channels were over the limit than were rejected, and the file needs an eye:
+    EEG.RELAX_issues_to_check.Impedance_screen_unavailable=0;
+    EEG.RELAX_issues_to_check.Impedance_rejected_too_many_electrodes=0;
+    if isfield(EEG,'RELAX') && isfield(EEG.RELAX,'ImpedanceScreen')
+        if ~EEG.RELAX.ImpedanceScreen.available
+            EEG.RELAX_issues_to_check.Impedance_screen_unavailable=1;
+        elseif EEG.RELAX.ImpedanceScreen.capApplied
+            EEG.RELAX_issues_to_check.Impedance_rejected_too_many_electrodes=EEG.RELAX.ImpedanceScreen.nOverThreshold;
+        end
+    end
     if (EEG.RELAXProcessingExtremeRejections.NumberOfMuscleContaminatedChannelsRecomendedToDelete...
             +EEG.RELAXProcessingExtremeRejections.NumberOfExtremeNoiseChannelsRecomendedToDelete...
             +size(EEG.RELAXProcessingExtremeRejections.PREPBasedChannelToReject,1))...
@@ -929,8 +1004,20 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     EEG = pop_saveset( EEG, SaveSet_CleanedFile );
     
     % Record warnings for all participants in single table:
+    % Via RELAX_append_table_row for the same reason as the extreme-rejections table
+    % above: a checkpoint written before a column was added has a different variable set.
+    % The try/catch below is the original fallback, which diverted the row into
+    % RELAX_issues_to_check_2nd_run on any assignment failure. That path is worth NOT
+    % reaching on a mere schema change, because RELAX_issues_to_check_2nd_run is saved to
+    % the SAME file as RELAX_issues_to_check (see below) with a plain save() - so taking
+    % it overwrites the checkpoint and loses every row the table had already accumulated.
+    % Reconciling the schema keeps those rows; the catch remains for anything else.
     try
-        RELAX_issues_to_check(FileNumber,:) = struct2table(EEG.RELAX_issues_to_check,'AsArray',true);
+        if ~exist('RELAX_issues_to_check','var')
+            RELAX_issues_to_check = [];
+        end
+        RELAX_issues_to_check = RELAX_append_table_row(RELAX_issues_to_check, FileNumber, ...
+            struct2table(EEG.RELAX_issues_to_check,'AsArray',true));
     catch
         RELAX_issues_to_check_2nd_run(FileNumber,:) = struct2table(EEG.RELAX_issues_to_check,'AsArray',true);
         warning('The variable: "RELAX_issues_to_check" already exists and includes different settings from your current settings')

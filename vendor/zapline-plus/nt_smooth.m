@@ -39,7 +39,7 @@ else
     for k=1:nIterations-1
         B=conv(B,[ones(integ,1);frac]/T);
     end
-    x=filtfilt(B,1,x);    
+    x=filter(B,1,x);    
 end
 
 if nodelayflag
