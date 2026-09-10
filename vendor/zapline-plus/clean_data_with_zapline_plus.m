@@ -279,6 +279,11 @@ zaplineConfig.boundaries = boundaries;
 [pxx_clean_log resSigmaFinal resProportionRemoved resProportionRemovedNoise resProportionRemovedBelowNoise resProportionBelowLower...
     resProportionAboveUpper resRatioNoiseRaw resRatioNoiseClean resNremoveFinal resScores resNoisePeaks resFoundNoise] = deal([]);
 
+% RELAX-GEDAI local change (VENDORING.md C9): the chunk layout is recorded so a run's
+% boundary alignment can be audited after the fact. Cell, because the number of chunks
+% differs per noise frequency.
+resChunkIndices = {};
+
 %% Clean each frequency one after another
 
 % find flat channels and store, remove from dataset to work on
@@ -410,69 +415,71 @@ while i_noisefreq <= length(noisefreqs)
     else
         disp('Using adaptive chunk length!')
         %% find chunk indices
-        data_narrowfilt = bandpass(data,[noisefreq-detectionWinsize/2 noisefreq+detectionWinsize/2],srate);
-        
-        nSegments = max(floor(size(data_narrowfilt,1)/srate/segmentLength),1);
-        
-        covarianceMatrices = zeros(size(data_narrowfilt,2),size(data_narrowfilt,2),nSegments);
-        
+
+        % RELAX-GEDAI local change (VENDORING.md C8): upstream anchors the narrowband
+        % filter, the covariance epochs and the chunk edges at sample 1 and lets all
+        % three run straight across discontinuities. On boundary-heavy recordings that
+        % slices a stretch of continuous data into a fragment, which then becomes the
+        % shortest segment in its chunk and collapses that chunk's pwelch window.
+        segments = zapline_boundary_segments(size(data,1), boundaries);
+
+        % bandpass() applies a linear-phase FIR single-pass and compensates the delay;
+        % it is NOT zero-phase, so filtfilt is not a substitute. Design it once, then
+        % apply the identical function inside each segment with reflection padding.
+        narrowBand = [noisefreq-detectionWinsize/2 noisefreq+detectionWinsize/2];
+        [~, narrowFilt] = bandpass(data(:,1), narrowBand, srate);
+        narrowOrder = filtord(narrowFilt);
+        data_narrowfilt = zapline_filter_by_segments(data, segments, ...
+            @(x) bandpass(x, narrowBand, srate), narrowOrder, narrowOrder + 1);
+
+        epochSamples        = round(segmentLength*srate);
+        minEpochSamples     = max(epochSamples, narrowOrder + 1);
+        wholeSegmentSamples = max(round(minChunkLength/2*srate), epochSamples);
+
+        [epochs, epochSegment] = zapline_covariance_epochs(segments, ...
+            epochSamples, wholeSegmentSamples, minEpochSamples);
+
+        nEpochs = size(epochs,1);
+        fprintf('%.0f covariance epochs across %.0f continuous segments.\n', ...
+            nEpochs, size(segments,1));
+
         %% compute covmatrices
-        for iSegment = 1:nSegments
-            
-            if iSegment ~= nSegments
-                segmentIndices = 1+segmentLength*srate*(iSegment-1):segmentLength*srate*(iSegment);
-            else
-                segmentIndices = 1+segmentLength*srate*(iSegment-1):size(data_narrowfilt,1);
-            end
-            
-            segment = data_narrowfilt(segmentIndices,:);
-            
-            covarianceMatrices(:,:,iSegment) = cov(segment);
-            
+        covarianceMatrices = zeros(size(data_narrowfilt,2),size(data_narrowfilt,2),nEpochs);
+
+        for iEpoch = 1:nEpochs
+
+            covarianceMatrices(:,:,iEpoch) = ...
+                cov(data_narrowfilt(epochs(iEpoch,1):epochs(iEpoch,2),:));
+
         end
-        
+
         %% find distances
-        distances = zeros(nSegments-1,1);
-        
-        for iSegment = 2:nSegments
-            
-            distances(iSegment-1) = sum(pdist(covarianceMatrices(:,:,iSegment)-covarianceMatrices(:,:,iSegment-1)))/2;
-            
+        distances = zeros(max(nEpochs-1,0),1);
+
+        for iEpoch = 2:nEpochs
+
+            distances(iEpoch-1) = ...
+                sum(pdist(covarianceMatrices(:,:,iEpoch)-covarianceMatrices(:,:,iEpoch-1)))/2;
+
         end
-        
+
         %% find peaks
-        [pks,locs,widths,proms] = findpeaks(distances);
-        [pks,locs] = findpeaks(distances,'MinPeakProminence',quantile(proms,prominenceQuantile),'MinPeakDistance',minChunkLength);
-        
-        %% plot
-        
-%         figure('color','w');
-%         plot(distances)
-%         
-%         hold on
-%         
-%         l = plot(locs,pks,'ko')
-%         title('noise narrowband covariance matrix distances')
-%         legend(l,'chunk segmentations')
-%         xlabel('time [seconds]')
-        
+        % 'MinPeakDistance', minChunkLength is deliberately NOT passed: it counts epoch
+        % INDICES, and boundary-aligned epochs are no longer uniformly segmentLength
+        % long, so it would silently mean minChunkLength * (mean epoch length) seconds.
+        % zapline_chunk_indices enforces minChunkLength in samples instead.
+        pks  = [];
+        locs = [];
+        if numel(distances) >= 3
+            [~,~,~,proms] = findpeaks(distances);
+            if ~isempty(proms)
+                [pks,locs] = findpeaks(distances,'MinPeakProminence',quantile(proms,prominenceQuantile));
+            end
+        end
+
         %% create final chunk indices
-        
-        chunkIndices = ones(length(pks)+2,1);
-        
-        chunkIndices(2:end-1) = locs*segmentLength*srate;
-        
-        chunkIndices(end) = length(data)+1;
-        
-        if chunkIndices(2) - chunkIndices(1) < minChunkLength*srate
-            % make sure the last chunk is also min length
-            chunkIndices(2) = [];
-        end
-        
-        if chunkIndices(end) - chunkIndices(end-1) < minChunkLength*srate
-            % make sure the last chunk is also min length
-            chunkIndices(end-1) = [];
-        end
+        chunkIndices = zapline_chunk_indices(size(data,1), epochs, epochSegment, segments, ...
+            locs, pks, round(minChunkLength*srate), wholeSegmentSamples);
     end
     
     nChunks = length(chunkIndices)-1;
@@ -970,6 +977,7 @@ while i_noisefreq <= length(noisefreqs)
     resNremoveFinal(i_noisefreq,1:size(NremoveFinal,1),1:size(NremoveFinal,2)) = NremoveFinal;
     resNoisePeaks(i_noisefreq,1:size(noisePeaks,1),1:size(noisePeaks,2)) = noisePeaks;
     resFoundNoise(i_noisefreq,1:size(foundNoise,1),1:size(foundNoise,2)) = foundNoise;
+    resChunkIndices{i_noisefreq} = chunkIndices;
     resSigmaFinal(i_noisefreq) = thisZaplineConfig.noiseCompDetectSigma;
     resProportionRemoved(i_noisefreq) = proportionRemoved;
     resProportionRemovedNoise(i_noisefreq) = proportionRemovedNoise;
@@ -1063,6 +1071,7 @@ analyticsResults.proportionAboveUpper = resProportionAboveUpper;
 analyticsResults.ratioNoiseRaw = resRatioNoiseRaw;
 analyticsResults.ratioNoiseClean = resRatioNoiseClean;
 analyticsResults.NremoveFinal = resNremoveFinal;
+analyticsResults.chunkIndices = resChunkIndices;
 analyticsResults.scores = resScores;
 analyticsResults.noisePeaks = resNoisePeaks;
 analyticsResults.foundNoise = resFoundNoise;

@@ -186,6 +186,12 @@ but it still has the frequency-grid-collapse crash on short inter-boundary segme
 `clean_data_with_zapline_plus_eeglab_wrapper` from the plugin path instead, which is boundary-aware but
 not crash-fixed.
 
+The vendored copy's **adaptive chunker** (C8, `vendor/zapline-plus/VENDORING.md`) is also boundary-aligned:
+covariance epochs never straddle a boundary, an inter-boundary segment shorter than `minChunkLength/2`
+is never subdivided, chunk edges either fall on a boundary or leave at least `minChunkLength/2` on both
+sides, and the narrowband detection filter runs per segment. This too holds only for the vendored copy
+reached via `RELAX_add_vendored_zapline()`; the EEGLAB plugin copy remains sample-1-anchored.
+
 Made boundary-aware here: `RELAX_filtbutter.m` (optional 7th argument; this includes the Butterworth
 notch — its bandstop branch pads by the stop-band width rather than the centre frequency, since a
 notch rings at its bandwidth), `RELAX_blinks_IQR_method.m`, `RELAX_targeted_wICA.m`.

@@ -11,12 +11,18 @@ upstream's, byte for byte, except:
 
   - the 4 customized files listed below,
   - this file,
-  - `pwelch_segmented.m`, a file with no upstream counterpart at all (see
-    "Changes made by this plan" below).
+  - `pwelch_segmented.m`, `zapline_boundary_segments.m`, `zapline_covariance_epochs.m`,
+    `zapline_chunk_indices.m` and `zapline_filter_by_segments.m`, files with no
+    upstream counterpart at all (see "Changes made by this plan" below).
 
 (As of this commit, `pwelch_segmented` has been moved out of the bottom of
 `clean_data_with_zapline_plus.m`, where it started as a local subfunction, into
 that file of its own - Task 2 of this plan.)
+
+`zapline_filter_by_segments.m` calls `RELAX_reflect_pad` from the repo root, so the
+vendored tree is not standalone: it depends on the RELAX-GEDAI repo layout, not just
+on MATLAB/EEGLAB toolboxes. It is only ever reached through `RELAX_add_vendored_zapline()`,
+which is called from entry points that already have the repo root on the path.
 
 `RELAX_add_vendored_zapline.m` prepends this directory to the MATLAB path so these
 copies shadow the EEGLAB plugin's. Because the mirror is complete, RELAX no longer
@@ -41,6 +47,8 @@ To re-sync with a newer upstream, re-run the procedure in
 | C5 | `clean_data_with_zapline_plus.m` | Slice the boundary list per chunk and rebase it to chunk-local indices. |
 | C6 | `nt_zapline_plus.m` | Apply `nt_smooth` independently within each inter-boundary segment. |
 | C7 | `nt_smooth.m` | `filter` -> `filtfilt` (zero-phase smoothing). Not boundary-related; carried forward unchanged. |
+| C8 | `clean_data_with_zapline_plus.m` | Adaptive-chunk block: replaced the sample-1-anchored narrowband filter, covariance tiling and chunk-edge arithmetic with boundary-aligned equivalents built on `zapline_boundary_segments`, `zapline_covariance_epochs`, `zapline_chunk_indices` and `zapline_filter_by_segments`. Chunk edges are now the first sample of the following epoch (upstream used the last sample of the current one). `'MinPeakDistance', minChunkLength` was removed from `findpeaks` because it counts epoch indices; `minChunkLength` is now enforced in samples inside `zapline_chunk_indices`. |
+| C9 | `clean_data_with_zapline_plus.m` | Analytics: added `analyticsResults.chunkIndices`, a cell of the chunk layout per noise frequency. |
 
 ## Changes made by this plan
 
