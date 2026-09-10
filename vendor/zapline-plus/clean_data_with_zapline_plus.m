@@ -294,9 +294,21 @@ end
 
 cleanData = data;
 
+% Frequency grid for every spectrum that feeds the fine noise-peak search below.
+% That search indexes f with detailedFreqBoundsUpper (default +/-0.05 Hz around the
+% noise frequency). pwelch's default nfft follows the WINDOW length, and
+% pwelch_segmented sizes its window from the shortest stretch of continuous data - on
+% boundary-heavy recordings that can be short enough that the bin spacing exceeds the
+% search window, leaving it with no bins at all and making the peak search return
+% empty. Pin the grid to a target bin spacing instead, so the window always holds
+% several bins however the data is segmented. This sets the GRID, not the resolution
+% bandwidth, which remains governed by the window length.
+specTargetDf = min(abs(detailedFreqBoundsUpper)) / 1.5;
+specNfft     = 2^nextpow2(round(srate / specTargetDf));   % 16384 at srate 500
+
 disp('Computing initial spectrum...')
 % compute spectrum with frequency resolution of winSizeCompleteSpectrum
-[pxx_raw_log,f]=pwelch_segmented(data,[],[],[],srate, boundaries);
+[pxx_raw_log,f]=pwelch_segmented(data,[],[],specNfft,srate, boundaries);
 % log transform
 pxx_raw_log = 10*log10(pxx_raw_log);
 
@@ -511,7 +523,7 @@ while i_noisefreq <= length(noisefreqs)
             
             if searchIndividualNoise
                 % compute spectrum with maximal frequency resolution per chunk to detect individual peaks
-                [pxx_chunk,f]=pwelch_segmented(chunk,[],[],[],srate, this_zaplineConfig_chunk.boundaries);
+                [pxx_chunk,f]=pwelch_segmented(chunk,[],[],specNfft,srate, this_zaplineConfig_chunk.boundaries);
                 pxx_chunk = 10*log10(pxx_chunk);
                 
                 thisFreqidx = f>noisefreq-(detectionWinsize/2) & f<noisefreq+(detectionWinsize/2);
@@ -606,11 +618,11 @@ while i_noisefreq <= length(noisefreqs)
         disp('Done. Computing spectra...')
         
         % compute spectra
-        [pxx_raw]=pwelch_segmented(data,[],[],[],srate, boundaries);
+        [pxx_raw]=pwelch_segmented(data,[],[],specNfft,srate, boundaries);
         pxx_raw_log = 10*log10(pxx_raw);
-        [pxx_clean,f]=pwelch_segmented(cleanData,[],[],[],srate, boundaries);
+        [pxx_clean,f]=pwelch_segmented(cleanData,[],[],specNfft,srate, boundaries);
         pxx_clean_log = 10*log10(pxx_clean);
-        [pxx_removed]=pwelch_segmented(data-cleanData,[],[],[],srate, boundaries);
+        [pxx_removed]=pwelch_segmented(data-cleanData,[],[],specNfft,srate, boundaries);
         pxx_removed_log = 10*log10(pxx_removed);
         
         % compute analytics

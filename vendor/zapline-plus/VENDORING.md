@@ -48,9 +48,11 @@ To re-sync with a newer upstream, re-run the procedure in
   file so it can be unit-tested (`tests/test_pwelch_segmented.m`).
 - `pwelch_segmented` no longer aliases pwelch's `nfft` argument with its own
   frequency-vector output.
-- (Not yet done, as of this commit.) All 5 call sites still pass `[]` in the
-  `nfft` position; making them pass an explicit `specNfft` derived from
-  `detailedFreqBoundsUpper` is Task 4 of this plan.
+- All 5 `pwelch_segmented` call sites in `clean_data_with_zapline_plus.m` pass an
+  explicit `specNfft`, computed once from `detailedFreqBoundsUpper` (pinning the
+  frequency grid to a bin spacing fine enough for the fine noise-peak search to
+  always find bins, independent of how short the data's inter-boundary segments
+  are), instead of `[]`.
 
 ## Inherited upstream changes
 
