@@ -11,6 +11,13 @@ function chunkIndices = zapline_chunk_indices(nSamples, epochs, epochSegment, se
 %   edgeMarginSamples - an edge inside a segment must leave at least this many samples
 %                       of that segment on both sides
 %
+%   The "no piece shorter than edgeMarginSamples" property assumes
+%   minChunkSamples >= edgeMarginSamples: two edges accepted inside the SAME segment
+%   are only guaranteed minChunkSamples apart, so with minChunkSamples < edgeMarginSamples
+%   the margin guarantee weakens to minChunkSamples. This holds by a factor of 2 under
+%   the shipped configuration (minChunkLength=30, segmentLength=1, giving 30*srate vs
+%   15*srate).
+%
 %   chunkIndices      - column vector, [1; edges; nSamples+1], consumed as
 %                       data(chunkIndices(i):chunkIndices(i+1)-1,:)
 %

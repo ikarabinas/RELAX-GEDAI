@@ -82,7 +82,8 @@
 %                               frequency, matrix of number of removed components per noisefreq and chunk, matrix of
 %                               artifact component scores per noisefreq and chunk, matrix of individual noise peaks
 %                               found per noisefreq and chunk, matrix of whether or not the noise peak exceeded the
-%                               threshold, per noisefreq and chunk
+%                               threshold, per noisefreq and chunk, chunkIndices: cell array, one entry per noise
+%                               frequency, holding the chunk layout ([1; edges; nSamples+1]) used for that frequency
 %   plothandles             - vector of handles to the created figures
 %
 %
@@ -429,6 +430,15 @@ while i_noisefreq <= length(noisefreqs)
         narrowBand = [noisefreq-detectionWinsize/2 noisefreq+detectionWinsize/2];
         [~, narrowFilt] = bandpass(data(:,1), narrowBand, srate);
         narrowOrder = filtord(narrowFilt);
+
+        % MATLAB's bandpass() silently REDUCES the filter order when the signal is
+        % shorter than 3*order+1 - measured: order 202 at 607 samples, but order 8 at
+        % 203 samples. These two arguments are therefore coupled, not independent: a
+        % segment of exactly minSegmentSamples (narrowOrder + 1, below) is padded to
+        % minSegmentSamples + 2*padWidth (narrowOrder, below), which must reach
+        % 3*filtord+1. With padWidth = filtord and minSegmentSamples = filtord+1 that
+        % is 3*filtord+1 exactly. Shrinking padWidth alone would silently drive the
+        % chunk detector with a much lower-order filter and raise no error.
         data_narrowfilt = zapline_filter_by_segments(data, segments, ...
             @(x) bandpass(x, narrowBand, srate), narrowOrder, narrowOrder + 1);
 
@@ -977,7 +987,7 @@ while i_noisefreq <= length(noisefreqs)
     resNremoveFinal(i_noisefreq,1:size(NremoveFinal,1),1:size(NremoveFinal,2)) = NremoveFinal;
     resNoisePeaks(i_noisefreq,1:size(noisePeaks,1),1:size(noisePeaks,2)) = noisePeaks;
     resFoundNoise(i_noisefreq,1:size(foundNoise,1),1:size(foundNoise,2)) = foundNoise;
-    resChunkIndices{i_noisefreq} = chunkIndices;
+    resChunkIndices{i_noisefreq} = chunkIndices(:);
     resSigmaFinal(i_noisefreq) = thisZaplineConfig.noiseCompDetectSigma;
     resProportionRemoved(i_noisefreq) = proportionRemoved;
     resProportionRemovedNoise(i_noisefreq) = proportionRemovedNoise;
