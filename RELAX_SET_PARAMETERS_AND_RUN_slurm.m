@@ -336,6 +336,19 @@ RELAX_cfg.Perform_PREP_bad_channel_rejection=0; % 0 = skip PREP findNoisyChannel
 % back before saving (see InterpolateRejectedElectrodesAfterCleaning below).
 RELAX_cfg.Perform_impedance_bad_channel_rejection=1; % 1 = reject channels over MaxImpedanceKOhm, 0 = skip
 RELAX_cfg.MaxImpedanceKOhm=500; % kOhm. Strictly greater-than; an unknown (NaN) impedance is never rejected
+
+% Reject clusters of electrically bridged electrodes (electrolyte spreading between
+% adjacent contacts), detected via the EEGLAB ebridge plugin's eBridge() from the
+% electrical-distance criterion (Alschuler et al. 2014). Off by default: eBridge is an
+% external plugin not bundled with this repo (install it to use this screen), and this
+% is new behaviour. Every channel in a flagged cluster is removed (a bridge cannot be
+% undone) and reconstructed later by spherical interpolation, same as any other bad
+% channel. MaxProportionChannels/MaxClusterSize are QC-only warnings on the recording's
+% own reconstructability, not caps on what gets rejected - see RELAX_bridged_channels.
+RELAX_cfg.Perform_bridged_channel_rejection=0; % 1 = reject bridged channel clusters, 0 = skip
+RELAX_cfg.BridgeMaxProportionChannels=0.10; % QC flag only
+RELAX_cfg.BridgeMaxClusterSize=4; % QC flag only
+
 RELAX_cfg.ComputeSER_ARR=0; % 0 = skip the SER/ARR artifact marking block (its only consumer, RELAX_metrics_final_SER_and_ARR, is commented out, and the marking functions are boundary-blind)
 
 RELAX_cfg.Do_MWF_Once=0; % 1 = Perform the MWF cleaning a second time (1 for yes, 0 for no).

@@ -63,6 +63,7 @@ epoching step from the GUI; `pop_RELAX_help.m` / `pop_RELAX_citation.m` are info
 - FieldTrip
 - GEDAI (github.com/neurotuning/GEDAI-master or ikarabinas/GEDAI-master) when `RELAX_cfg.Run_GEDAI=1`
 - ERPLAB, if `RELAX_cfg.NotchFilterType='PMnotch'`
+- The EEGLAB `ebridge` plugin, if `RELAX_cfg.Perform_bridged_channel_rejection=1`
 
 zapline-plus is **no longer** an external dependency when `RELAX_cfg.NotchFilterType='ZaplinePlus'`: the
 complete upstream tree (`f4628a3`) is vendored under `vendor/zapline-plus/`, with 4 files patched (3
@@ -94,8 +95,14 @@ Stage order:
 3. **Band-pass filter & optional downsample** — `RELAX_filtbutter.m` or `pop_eegfiltnew`; order
    relative to MWF controlled by `RELAX_cfg.LowPassFilterBeforeMWF` (low-pass-before-MWF increases
    rank-deficiency risk and is not the recommended default).
-4. **Bad-channel rejection** — PREP's `findNoisyChannels` (off by default in the SLURM path via
-   `RELAX_cfg.Perform_PREP_bad_channel_rejection=0`; see "Boundary/discontinuity handling" below).
+4. **Bad-channel rejection** — three screens run in order, all optional and off/on per
+   `RELAX_cfg` flags: recorded-impedance rejection (`RELAX_cfg.Perform_impedance_bad_channel_rejection`,
+   `RELAX_impedance_bad_channels.m`), electrically-bridged-cluster rejection
+   (`RELAX_cfg.Perform_bridged_channel_rejection`, `RELAX_bridged_channels.m`, needs the
+   EEGLAB `ebridge` plugin), then PREP's `findNoisyChannels` (off by default in the SLURM
+   path via `RELAX_cfg.Perform_PREP_bad_channel_rejection=0`; see "Boundary/discontinuity
+   handling" below). Impedance and bridge screens run first so PREP's whole-montage
+   correlation/reference statistics are never skewed by a channel already known to be bad.
 5. **Extreme-period marking** — `RELAX_excluding_channels_and_epoching.m` (or the `_iTBS` variant for
    TMS data with pulse artifacts) then `RELAX_excluding_extreme_values.m`; blink detection via
    `RELAX_blinks_IQR_method.m`.
