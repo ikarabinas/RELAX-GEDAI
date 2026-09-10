@@ -40,8 +40,8 @@ function [clusters, pairLabels] = RELAX_group_bridged_channels(labels, pairPairs
     for k = 1:numPairs
         i = find(strcmp(labels, pairPairs{1,k}), 1);
         j = find(strcmp(labels, pairPairs{2,k}), 1);
-        if isempty(i) || isempty(j)
-            continue;
+        if isempty(i) || isempty(j) || i == j
+            continue; % a self-pair would set a nonzero adjacency diagonal, which graph() rejects
         end
         adjacency(i,j) = true;
         adjacency(j,i) = true;

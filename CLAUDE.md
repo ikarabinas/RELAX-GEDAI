@@ -173,7 +173,8 @@ passes boundaries through but still has the nfft-grid crash on short segments th
 copy fixes.
 
 Made boundary-aware in this fork: `RELAX_filtbutter.m` (optional 7th argument; covers the Butterworth
-notch too), `RELAX_blinks_IQR_method.m`, `RELAX_targeted_wICA.m`.
+notch too), `RELAX_blinks_IQR_method.m`, `RELAX_targeted_wICA.m`. `RELAX_bridged_channels.m` is
+boundary-aware by construction (its epoching goes through `RELAX_get_segments`, not a fresh reshape).
 
 **Still boundary-blind — `RELAX_check_boundary_support` errors if any of these is enabled on data
 with boundaries already in the input file:** PREP `findNoisyChannels`

@@ -21,13 +21,21 @@
 %     BinSize                 - eBridge BinSize: bin width of the ED frequency
 %                              distribution (default 0.1)
 %     MaxEpochs                - cap on epochs handed to eBridge, matching eBridge's own
-%                              internal cap (default 1500); subsampled deterministically
+%                              internal cap (default 1500); subsampled deterministically.
+%                              Also the memory lever: the working epoch array is
+%                              nbchan x epochSamples x numEpochs doubles (a 257-channel,
+%                              1 s, 500 Hz recording at the default cap is ~1.5 GB), so a
+%                              SLURM job with a tight per-task memory limit may need this
+%                              lowered.
 %     MaxProportionChannels    - QC only, does not change what is rejected: proportion of
 %                              channels above which bridging is flagged as excessive
 %                              (default 0.10)
 %     MaxClusterSize          - QC only: cluster size above which interpolation over the
 %                              resulting gap is considered untrustworthy (default 4)
-%     RespectBoundaries        - passed through to RELAX_filtbutter when Filter=1 (default 0)
+%     RespectBoundaries        - passed through to RELAX_filtbutter's boundary handling;
+%                              only affects the optional pre-filter (Filter=1). Epoching
+%                              itself always respects boundaries, via RELAX_get_segments,
+%                              regardless of this setting (default 0)
 %
 % Outputs:
 %   rejectLabels - Column cell array of channel labels to reject: every channel
@@ -43,7 +51,7 @@
 %                     .status             human-readable reason when not available
 %                     .filtered, .filtBand, .epochSec, .numEpochs
 %                     .EDcutoff, .EDscale
-%                     .clusters, .pairs, .nBridgedChannels, .nBridgedPairs
+%                     .clusters, .pairs, .nBridgedChannels, .nBridgedPairs, .maxClusterSize
 %                     .oversizedCluster, .excessiveBridging   QC flags, see above -
 %                                         these do not change what is rejected
 %                     .rejectLabels
@@ -112,7 +120,7 @@ function [rejectLabels, info] = RELAX_bridged_channels(EEG, varargin)
                   'epochSec', epochSec, 'numEpochs', 0, ...
                   'EDcutoff', NaN, 'EDscale', NaN, ...
                   'clusters', {{}}, 'pairs', {{}}, ...
-                  'nBridgedChannels', 0, 'nBridgedPairs', 0, ...
+                  'nBridgedChannels', 0, 'nBridgedPairs', 0, 'maxClusterSize', 0, ...
                   'oversizedCluster', false, 'excessiveBridging', false, ...
                   'rejectLabels', {{}});
 
@@ -195,6 +203,7 @@ function [rejectLabels, info] = RELAX_bridged_channels(EEG, varargin)
     info.pairs = pairLabels;
     info.nBridgedPairs = numel(pairLabels);
     info.nBridgedChannels = sum(clusterSizes);
+    info.maxClusterSize = max(clusterSizes);
 
     memberIdx = [];
     for c = 1:numel(clusters)

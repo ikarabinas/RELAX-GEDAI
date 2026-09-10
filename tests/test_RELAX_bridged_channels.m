@@ -14,8 +14,14 @@ function test_RELAX_bridged_channels()
 end
 
 function test_eBridge_not_found_returns_unavailable()
-    % No test double on the path here - eBridge really is absent in this environment,
-    % which is the state a user who has not installed the ebridge plugin is in.
+    % No test double on the path here - this exercises the real eBridge-missing branch.
+    % If the real EEGLAB ebridge plugin happens to be installed and on the path in this
+    % environment, that branch is unreachable this way; skip rather than fail, since a
+    % plugin being installed is not itself a defect.
+    if ~isempty(which('eBridge'))
+        fprintf('  (skipping eBridge-not-found case: a real eBridge is on the path)\n');
+        return;
+    end
     EEG = makeEEG(4, 2, 10);
     warnState = warning('off', 'RELAX_bridged_channels:eBridgeNotFound');
     cleanupWarn = onCleanup(@() warning(warnState));

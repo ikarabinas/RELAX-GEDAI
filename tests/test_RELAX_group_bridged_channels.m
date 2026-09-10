@@ -40,6 +40,15 @@ function test_RELAX_group_bridged_channels()
         'the valid pair must still be grouped');
     assert(isequal(pairLabels, {'E1-E2'}), 'the pair naming an unknown label must be dropped from pairLabels');
 
+    % --- A self-pair (eBridge naming the same label on both sides) is dropped, not
+    % passed through to graph(), which rejects a nonzero adjacency diagonal ---
+    labels = {'E1','E2','E3'};
+    pairs = [{'E1','E2'}; {'E1','E3'}]; % first pair is a self-pair (E1,E1), second is real
+    [clusters, pairLabels] = RELAX_group_bridged_channels(labels, pairs);
+    assert(numel(clusters) == 1 && isequal(sort(clusters{1}), {'E2','E3'}), ...
+        'the self-pair must be dropped while the real pair is still grouped');
+    assert(isequal(pairLabels, {'E2-E3'}), 'the self-pair must not appear in pairLabels');
+
     % --- No pairs -> no clusters ---
     [clusters, pairLabels] = RELAX_group_bridged_channels({'E1','E2'}, cell(2,0));
     assert(isempty(clusters) && isempty(pairLabels), 'empty pair list produces no clusters');

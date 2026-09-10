@@ -394,7 +394,11 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     % impedance screen caps its rejections - every flagged channel is removed. A bridge
     % cannot be undone (both electrodes measure one shorted voltage), so the removed
     % channels are reconstructed later by spherical interpolation from the surviving
-    % channels, the same treatment any other bad channel receives.
+    % channels, the same treatment any other bad channel receives (PREP- and
+    % impedance-rejected channels included). Note that interpolation runs before GEDAI
+    % (RELAX_cfg.Run_GEDAI), same as for those other screens - see stage 10 in this
+    % file's header comment / CLAUDE.md for why GEDAI needs bridged channels gone in
+    % the first place.
     %
     % Runs before PREP for the same reason the impedance screen does: findNoisyChannels
     % builds a robust average reference and channel-to-channel correlations across the
@@ -991,13 +995,21 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
             EEG.RELAX_issues_to_check.Bridge_screen_unavailable=1;
         else
             if EEG.RELAX.BridgeScreen.oversizedCluster
-                EEG.RELAX_issues_to_check.Bridge_oversized_cluster=EEG.RELAX.BridgeScreen.nBridgedChannels;
+                EEG.RELAX_issues_to_check.Bridge_oversized_cluster=EEG.RELAX.BridgeScreen.maxClusterSize;
             end
             if EEG.RELAX.BridgeScreen.excessiveBridging
                 EEG.RELAX_issues_to_check.Bridge_excessive_bridging=EEG.RELAX.BridgeScreen.nBridgedChannels;
             end
         end
     end
+    % Deliberately omits ImpedanceBasedChannelToReject: it already enforces
+    % MaxProportionOfElectrodesThatCanBeDeleted on itself (see the impedance block
+    % above) and reports separately via Impedance_rejected_too_many_electrodes when its
+    % own cap fires. This check instead totals the screens with no cap of their own
+    % (muscle/noise recommendations, PREP, bridge) against the same budget - it is not a
+    % true combined-deletion total across every screen, so a file where several capped
+    % and uncapped screens each reject independently can still lose more of its montage
+    % than this check alone would suggest.
     if (EEG.RELAXProcessingExtremeRejections.NumberOfMuscleContaminatedChannelsRecomendedToDelete...
             +EEG.RELAXProcessingExtremeRejections.NumberOfExtremeNoiseChannelsRecomendedToDelete...
             +size(EEG.RELAXProcessingExtremeRejections.PREPBasedChannelToReject,1)...
