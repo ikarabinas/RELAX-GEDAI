@@ -26,7 +26,7 @@ data gets used for the actual study.
 There is no CLI entry point; you run these as MATLAB scripts (typically via `run(...)` or by hitting
 "Run" in the MATLAB editor):
 
-- `RELAX_SET_PARAMETERS_AND_RUN.m` — the canonical entry point. Sets `addpath`s for EEGLAB/PREP/
+- `RELAX_SET_PARAMETERS_AND_RUN.m` — the deprecated (canonical) entry point. Sets `addpath`s for EEGLAB/PREP/
   MWF/FieldTrip/FastICA, configures `RELAX_cfg` (paths + all pipeline parameters), builds the file
   list, then calls `RELAX_Wrapper(RELAX_cfg)`.
 - `RELAX_SET_PARAMETERS_AND_RUN_slurm.m` / `RELAX_Wrapper_slurm.m` — SLURM job-array variant. Instead
@@ -36,12 +36,6 @@ There is no CLI entry point; you run these as MATLAB scripts (typically via `run
   default parpool job-storage dir when many tasks start concurrently. Submit with
   `sbatch run_relax-gedai_slurm.sh` (adjust `--array=1-N%M` to the participant count).
 - `run_relax-gedai.sh` — non-array SLURM submission wrapping the plain (non-slurm) entry point.
-- `RELAX_SET_PARAMETERS_AND_RUN_bart.m` / `RELAX_Wrapper_bart.m` — a parallel variant configured for
-  a different dataset/experiment ("bart"). Same architecture as the main pipeline; parameter/path
-  differences only.
-- `AARATEP_RELAX_tmseeg_pipeline.m` — combines steps from the AARATEP TMS-EEG pipeline (in the
-  `AARATEPPipeline` git submodule — run `git submodule update --init` if that directory is empty)
-  with RELAX steps, for preprocessing continuous TMS-EEG recordings.
 - `convert_files_to_eeglab_format/` — standalone conversion utilities (`save_mff_to_set*.m`,
   `save_fif_to_set.m`, `run_set_conversion.py`) to turn raw EGI `.mff` / `.fif` recordings into the
   EEGLAB `.set` format the main pipeline expects. Run the Python driver with
@@ -80,7 +74,7 @@ call, MATLAB resolves the plugin's copy instead, which is boundary-aware but sti
 bug (see "Boundary/discontinuity handling" below). Leaving the zapline-plus
 EEGLAB plugin installed is harmless and is what keeps zapline-plus available on EEGLAB's own menus.
 
-## Pipeline architecture (`RELAX_Wrapper.m` / `RELAX_Wrapper_slurm.m` / `RELAX_Wrapper_bart.m`)
+## Pipeline architecture ('RELAX_Wrapper_slurm.m` / `RELAX_Wrapper.m` (Deprecated) / `RELAX_Wrapper_bart.m` (Deprecated))
 
 All three wrapper variants follow the same stage sequence over a per-file loop
 (`for FileNumber = RELAX_cfg.FilesToProcess`), driven entirely by fields on the `RELAX_cfg` struct
@@ -95,7 +89,8 @@ Stage order:
 1. **Load & prep** — `pop_loadset`, optional channel-location lookup, delete irrelevant channels,
    split off "keep but don't clean" auxiliary electrodes (`RELAX_cfg.electrodes_2_keep_but_not_clean`).
 2. **Notch filter** — Butterworth, ZaplinePlus, or ERPLAB PMnotch, selected by
-   `RELAX_cfg.NotchFilterType`.
+   `RELAX_cfg.NotchFilterType`. With Butterworth/PMnotch this runs before band-pass filtering &
+   downsampling (step 3); with ZaplinePlus it runs after downsampling instead.
 3. **Band-pass filter & optional downsample** — `RELAX_filtbutter.m` or `pop_eegfiltnew`; order
    relative to MWF controlled by `RELAX_cfg.LowPassFilterBeforeMWF` (low-pass-before-MWF increases
    rank-deficiency risk and is not the recommended default).
@@ -159,52 +154,25 @@ each segment edge. Design and analysis:
 
 Helpers: `RELAX_get_segments.m` (segment list from `EEG.event`), `RELAX_reflect_pad.m` (odd reflection),
 `RELAX_apply_by_segments.m` (apply a function per segment), `RELAX_check_boundary_support.m` (startup
-guard — see caveat below). Callers must always re-derive the segment list from the *current* `EEG` —
-`eeg_eegrej` adds boundaries part-way through the wrapper.
+guard on the input file only — `eeg_eegrej` adds more boundaries mid-pipeline that it never re-checks,
+so a clean pass at startup doesn't guarantee every later stage handled every boundary the run ends up
+with). Callers must always re-derive the segment list from the *current* `EEG`, not a cached one.
 
-`RELAX_check_boundary_support` runs once, at startup, on the freshly loaded file — it only sees
-discontinuities already present in the INPUT file. It is not re-checked later in the run, and
-`eeg_eegrej` adds more boundaries mid-pipeline (rejecting extreme periods) on essentially every file,
-so a clean pass at startup does not mean every later stage actually saw and handled every boundary a
-given run ends up with — it means the input file didn't already contain a combination the guard knows
-is unsafe.
+Boundary-aware already (no change needed): `pop_resample`, `pop_eegfiltnew`/`firfilt`, `pop_epoch`
+(and everything it gates: `RELAX_excluding_channels_and_epoching`, `RELAX_excluding_extreme_values`,
+`RELAX_muscle`, `RELAX_drift`), `RELAX_ICA_subtract`, and zapline-plus **only via the vendored copy**
+(`RELAX_add_vendored_zapline()`, see "External dependencies" above) — the EEGLAB plugin copy also
+passes boundaries through but still has the nfft-grid crash on short segments that only the vendored
+copy fixes.
 
-Boundary-aware without any change from us (verified against EEGLAB 2026.0.0 source): `pop_resample`
-(splits at boundaries), `clean_data_with_zapline_plus_eeglab_wrapper` (passes `boundaries` to zapline),
-`pop_eegfiltnew`/`firfilt` (splits at discontinuities), and `pop_epoch` (drops any epoch containing a
-boundary — which is what protects `RELAX_epoching`, `RELAX_excluding_channels_and_epoching`,
-`RELAX_excluding_extreme_values`, `RELAX_muscle` and `RELAX_drift`). `RELAX_ICA_subtract` is also safe:
-it is a purely spatial projection.
+Made boundary-aware in this fork: `RELAX_filtbutter.m` (optional 7th argument; covers the Butterworth
+notch too), `RELAX_blinks_IQR_method.m`, `RELAX_targeted_wICA.m`.
 
-The zapline-plus boundary-awareness above holds **only for the vendored copy** under
-`vendor/zapline-plus/`, reached via `RELAX_add_vendored_zapline()` (see "External dependencies" above).
-Its boundary customizations (C1-C6, `vendor/zapline-plus/VENDORING.md`) were originally authored
-directly against the installed EEGLAB plugin copy, so that copy also passes `boundaries` to zapline —
-but it still has the frequency-grid-collapse crash on short inter-boundary segments that
-`docs/superpowers/plans/2026-09-09-zapline-nfft-grid-fix.md` fixed only in the vendored tree. If
-`RELAX_add_vendored_zapline()` is not called before the notch-filter stage, MATLAB can resolve
-`clean_data_with_zapline_plus_eeglab_wrapper` from the plugin path instead, which is boundary-aware but
-not crash-fixed.
-
-The vendored copy's **adaptive chunker** (C8, `vendor/zapline-plus/VENDORING.md`) is also boundary-aligned:
-covariance epochs never straddle a boundary, an inter-boundary segment shorter than `minChunkLength/2`
-is never subdivided, chunk edges either fall on a boundary or leave at least `minChunkLength/2` on both
-sides, and the narrowband detection filter runs per segment. This too holds only for the vendored copy
-reached via `RELAX_add_vendored_zapline()`; the EEGLAB plugin copy remains sample-1-anchored.
-
-Made boundary-aware here: `RELAX_filtbutter.m` (optional 7th argument; this includes the Butterworth
-notch — its bandstop branch pads by the stop-band width rather than the centre frequency, since a
-notch rings at its bandwidth), `RELAX_blinks_IQR_method.m`, `RELAX_targeted_wICA.m`.
-
-**Still boundary-blind — `RELAX_check_boundary_support` errors if any of these is enabled on data with
-boundaries already present in the input file:** PREP `findNoisyChannels`
-(`Perform_PREP_bad_channel_rejection`, off in the shipped entry-point config — the wrapper itself
-defaults an absent flag to on, for backward compatibility — it tiles correlation windows flatly from
-sample 1 against a 1% `badTimeThreshold`, so ~9-11% of windows straddle a discontinuity on this data),
-MWF delay-stacking (`Do_MWF_*`), `Run_GEDAI`, `Perform_wICA_on_ICLabel`, and the SER/ARR marking block
-(`ComputeSER_ARR`, off by default — its only consumer `RELAX_metrics_final_SER_and_ARR` is commented
-out, and `RELAX_muscle`, `RELAX_horizontaleye`, `RELAX_drift` and `RELAX_pad_brief_mask_periods` would
-all need fixing first).
+**Still boundary-blind — `RELAX_check_boundary_support` errors if any of these is enabled on data
+with boundaries already in the input file:** PREP `findNoisyChannels`
+(`Perform_PREP_bad_channel_rejection`, off by default in the shipped config), MWF delay-stacking
+(`Do_MWF_*`), `Run_GEDAI`, `Perform_wICA_on_ICLabel`, and the SER/ARR marking block (`ComputeSER_ARR`,
+off by default).
 
 Tests live in `tests/`. Run them with:
 `matlab -nodisplay -nosplash -batch "addpath(pwd); addpath(fullfile(pwd,'tests')); run_all_tests"`
