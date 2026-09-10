@@ -48,8 +48,9 @@ To re-sync with a newer upstream, re-run the procedure in
   file so it can be unit-tested (`tests/test_pwelch_segmented.m`).
 - `pwelch_segmented` no longer aliases pwelch's `nfft` argument with its own
   frequency-vector output.
-- All 5 call sites pass an explicit `specNfft` derived from
-  `detailedFreqBoundsUpper`.
+- (Not yet done, as of this commit.) All 5 call sites still pass `[]` in the
+  `nfft` position; making them pass an explicit `specNfft` derived from
+  `detailedFreqBoundsUpper` is Task 4 of this plan.
 
 ## Inherited upstream changes
 
