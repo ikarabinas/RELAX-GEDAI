@@ -11,9 +11,11 @@ upstream's, byte for byte, except:
 
   - the 4 customized files listed below,
   - this file,
-  - `pwelch_segmented.m`, `zapline_boundary_segments.m`, `zapline_covariance_epochs.m`,
-    `zapline_chunk_indices.m` and `zapline_filter_by_segments.m`, files with no
-    upstream counterpart at all (see "Changes made by this plan" below).
+  - `pwelch_segmented.m`, a file with no upstream counterpart at all (see "Changes
+    made by the nfft-grid-fix plan" below), and `zapline_boundary_segments.m`,
+    `zapline_covariance_epochs.m`, `zapline_chunk_indices.m` and
+    `zapline_filter_by_segments.m`, likewise with no upstream counterpart (see
+    "Changes made by the boundary-aligned-chunking plan" below).
 
 (As of this commit, `pwelch_segmented` has been moved out of the bottom of
 `clean_data_with_zapline_plus.m`, where it started as a local subfunction, into
@@ -47,10 +49,12 @@ To re-sync with a newer upstream, re-run the procedure in
 | C5 | `clean_data_with_zapline_plus.m` | Slice the boundary list per chunk and rebase it to chunk-local indices. |
 | C6 | `nt_zapline_plus.m` | Apply `nt_smooth` independently within each inter-boundary segment. |
 | C7 | `nt_smooth.m` | `filter` -> `filtfilt` (zero-phase smoothing). Not boundary-related; carried forward unchanged. |
-| C8 | `clean_data_with_zapline_plus.m` | Adaptive-chunk block: replaced the sample-1-anchored narrowband filter, covariance tiling and chunk-edge arithmetic with boundary-aligned equivalents built on `zapline_boundary_segments`, `zapline_covariance_epochs`, `zapline_chunk_indices` and `zapline_filter_by_segments`. Chunk edges are now the first sample of the following epoch (upstream used the last sample of the current one). `'MinPeakDistance', minChunkLength` was removed from `findpeaks` because it counts epoch indices; `minChunkLength` is now enforced in samples inside `zapline_chunk_indices`. |
+| C8 | `clean_data_with_zapline_plus.m` | Adaptive-chunk block: replaced the sample-1-anchored narrowband filter, covariance tiling and chunk-edge arithmetic with boundary-aligned equivalents built on `zapline_boundary_segments`, `zapline_covariance_epochs`, `zapline_chunk_indices` and `zapline_filter_by_segments`. Chunk edges are now the first sample of the following epoch (upstream used the last sample of the current one). `'MinPeakDistance', minChunkLength` was removed from `findpeaks` because it counts epoch indices; `minChunkLength` is now enforced in samples inside `zapline_chunk_indices`. Also removed upstream's commented-out `%% plot` block (dead code plotting the narrowband covariance distances). Also added `numel(distances) >= 3` and non-empty-`proms` guards around the `findpeaks` calls - a genuine behaviour change: upstream errored outright when fewer than 3 covariance epochs were available, whereas this now degrades to a single whole-record chunk instead. |
 | C9 | `clean_data_with_zapline_plus.m` | Analytics: added `analyticsResults.chunkIndices`, a cell of the chunk layout per noise frequency. |
 
-## Changes made by this plan
+## Changes made by the nfft-grid-fix plan
+
+(`docs/superpowers/plans/2026-09-09-zapline-nfft-grid-fix.md`)
 
 - `pwelch_segmented` moved out of `clean_data_with_zapline_plus.m` into its own
   file so it can be unit-tested (`tests/test_pwelch_segmented.m`).
@@ -61,6 +65,18 @@ To re-sync with a newer upstream, re-run the procedure in
   frequency grid to a bin spacing fine enough for the fine noise-peak search to
   always find bins, independent of how short the data's inter-boundary segments
   are), instead of `[]`.
+
+## Changes made by the boundary-aligned-chunking plan
+
+(`docs/superpowers/plans/2026-09-10-boundary-aligned-zapline-chunking.md`, C8-C9 above)
+
+- Four new files with no upstream counterpart: `zapline_boundary_segments.m`,
+  `zapline_covariance_epochs.m`, `zapline_chunk_indices.m` and
+  `zapline_filter_by_segments.m`. See each file's own header comment for its
+  contract.
+- `clean_data_with_zapline_plus.m`'s adaptive-chunk block rewritten to use them
+  (C8), and `analyticsResults.chunkIndices` added to record the resulting chunk
+  layout per noise frequency (C9).
 
 ## Inherited upstream changes
 
