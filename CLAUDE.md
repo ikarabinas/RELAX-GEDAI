@@ -69,7 +69,14 @@ epoching step from the GUI; `pop_RELAX_help.m` / `pop_RELAX_citation.m` are info
 - FieldTrip
 - GEDAI (github.com/neurotuning/GEDAI-master or ikarabinas/GEDAI-master) when `RELAX_cfg.Run_GEDAI=1`
 - ERPLAB, if `RELAX_cfg.NotchFilterType='PMnotch'`
-- zapline-plus EEGLAB plugin, if `RELAX_cfg.NotchFilterType='ZaplinePlus'`
+
+zapline-plus is **no longer** an external dependency when `RELAX_cfg.NotchFilterType='ZaplinePlus'`: the
+complete upstream tree (`f4628a3`) is vendored under `vendor/zapline-plus/`, with 4 files carrying local
+boundary customizations plus one new file (`pwelch_segmented.m`) with no upstream counterpart — see
+`vendor/zapline-plus/VENDORING.md`. Entry points must call `RELAX_add_vendored_zapline()` after
+`eeglab()` so this directory is prepended to the path ahead of the EEGLAB plugin's copy; without that
+call, MATLAB resolves the plugin's boundary-blind, nfft-grid-bug copy instead. Leaving the zapline-plus
+EEGLAB plugin installed is harmless and is what keeps zapline-plus available on EEGLAB's own menus.
 
 ## Pipeline architecture (`RELAX_Wrapper.m` / `RELAX_Wrapper_slurm.m` / `RELAX_Wrapper_bart.m`)
 
@@ -129,6 +136,10 @@ affects the shared algorithm, check whether the same fix is needed in the siblin
 (`RELAX_Wrapper.m` / `RELAX_Wrapper_slurm.m` / `RELAX_Wrapper_bart.m`, and
 `RELAX_excluding_channels_and_epoching.m` / `_iTBS.m`) rather than assuming one is canonical.
 
+`vendor/` follows a different convention: `vendor/zapline-plus/` mirrors its upstream repository
+byte-for-byte except where `vendor/zapline-plus/VENDORING.md` documents a local customization — so an
+upstream re-sync stays diffable against the vendored commit rather than against a hand-edited copy.
+
 ### Skip-already-processed behavior
 
 Both the plain and SLURM entry-point scripts scan `RELAXProcessed/Cleaned_Data/` for filenames
@@ -162,6 +173,16 @@ Boundary-aware without any change from us (verified against EEGLAB 2026.0.0 sour
 boundary — which is what protects `RELAX_epoching`, `RELAX_excluding_channels_and_epoching`,
 `RELAX_excluding_extreme_values`, `RELAX_muscle` and `RELAX_drift`). `RELAX_ICA_subtract` is also safe:
 it is a purely spatial projection.
+
+The zapline-plus boundary-awareness above holds **only for the vendored copy** under
+`vendor/zapline-plus/`, reached via `RELAX_add_vendored_zapline()` (see "External dependencies" above).
+Its boundary customizations (C1-C6, `vendor/zapline-plus/VENDORING.md`) were originally authored
+directly against the installed EEGLAB plugin copy, so that copy also passes `boundaries` to zapline —
+but it still has the frequency-grid-collapse crash on short inter-boundary segments that
+`docs/superpowers/plans/2026-09-09-zapline-nfft-grid-fix.md` fixed only in the vendored tree. If
+`RELAX_add_vendored_zapline()` is not called before the notch-filter stage, MATLAB can resolve
+`clean_data_with_zapline_plus_eeglab_wrapper` from the plugin path instead, which is boundary-aware but
+not crash-fixed.
 
 Made boundary-aware here: `RELAX_filtbutter.m` (optional 7th argument; this includes the Butterworth
 notch — its bandstop branch pads by the stop-band width rather than the centre frequency, since a
