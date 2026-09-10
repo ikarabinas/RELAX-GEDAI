@@ -102,17 +102,20 @@ function [continuousEEG, epochedEEG] = RELAX_blinks_IQR_method(continuousEEG, ep
     disp(Message);
     % Make values in extreme outlying periods = 0 to help blink detection perform
     % better (not done in final output data, just in data fed to blinker or the IQR blink detection method):
+    valid_mask = true(1, size(EEGEyeOnly.data, 2)); % Keep track of non-outlier periods
     if isfield(continuousEEG, 'RELAX')==1
         if isfield(continuousEEG.RELAX, 'ExtremelyBadPeriodsForDeletion')==1
             for x=1:size(continuousEEG.RELAX.ExtremelyBadPeriodsForDeletion,1)
+                valid_mask(continuousEEG.RELAX.ExtremelyBadPeriodsForDeletion(x,1):continuousEEG.RELAX.ExtremelyBadPeriodsForDeletion(x,2)) = false;
                 EEGEyeOnly.data(:,continuousEEG.RELAX.ExtremelyBadPeriodsForDeletion(x,1):continuousEEG.RELAX.ExtremelyBadPeriodsForDeletion(x,2))=0;
             end
         end
     end
-    
+
     EEGEyeOnly.data=median(EEGEyeOnly.data,1); % This could be changed to median, which would increase robustness against bad channels or outliers (but wouldn't work so well if including electrodes barely affected by blinks)
-    InterQuartileRangeAllTimepointsAndEpochs=iqr(EEGEyeOnly.data(:,:),2);
-    Upper25 = prctile(EEGEyeOnly.data,75,2);
+    ValidData = EEGEyeOnly.data(valid_mask);
+    InterQuartileRangeAllTimepointsAndEpochs=iqr(ValidData,2);
+    Upper25 = prctile(ValidData,75,2);
     UpperBound=squeeze(Upper25+(3*InterQuartileRangeAllTimepointsAndEpochs)); % sets the threshold, above which a period is assumed to have a blink
 
     for x=1:size(EEGEyeOnly.data,2)

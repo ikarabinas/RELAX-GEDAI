@@ -123,7 +123,7 @@ eeglab;
 % Specify the MWF path:
 % https://github.com/exporl/mwf-artifact-removal
 % Somers, B., Francart, T., & Bertrand, A. (2018). A generic EEG artifact removal algorithm based on the multi-channel Wiener filter. Journal of neural engineering, 15(3), 036007.
-addpath(genpath('/home/imk2003/Documents/MATLAB/eeglab/plugins/mwf-artifact-removal'));
+addpath(genpath('/home/nga4004/tools/eeglab2026.0.0/plugins/mwf-artifact-removal'));
 
 % Fieldtrip:
 % http://www.fieldtriptoolbox.org/
@@ -345,7 +345,7 @@ RELAX_cfg.MaxImpedanceKOhm=500; % kOhm. Strictly greater-than; an unknown (NaN) 
 % undone) and reconstructed later by spherical interpolation, same as any other bad
 % channel. MaxProportionChannels/MaxClusterSize are QC-only warnings on the recording's
 % own reconstructability, not caps on what gets rejected - see RELAX_bridged_channels.
-RELAX_cfg.Perform_bridged_channel_rejection=0; % 1 = reject bridged channel clusters, 0 = skip
+RELAX_cfg.Perform_bridged_channel_rejection=1; % 1 = reject bridged channel clusters, 0 = skip
 RELAX_cfg.BridgeMaxProportionChannels=0.10; % QC flag only
 RELAX_cfg.BridgeMaxClusterSize=4; % QC flag only
 
@@ -356,7 +356,8 @@ RELAX_cfg.Do_MWF_Twice=0; % 1 = Perform the MWF cleaning a second time (1 for ye
 RELAX_cfg.Do_MWF_Thrice=0; % 1 = Perform the MWF cleaning a second time (1 for yes, 0 for no). I think cleaning drift in this is a good idea.
 RELAX_cfg.Perform_wICA_on_ICLabel=0; % 1 = Perform wICA on artifact components marked by ICLabel (1 for yes, 0 for no).
 RELAX_cfg.Perform_ICA_subtract=0; % 1 = Perform ICA subtract on artifact components marked by ICLabel (1 for yes, 0 for no) (non-optimal, intended to be optionally used separately to wICA rather than additionally)
-RELAX_cfg.ICA_method='picard';
+RELAX_cfg.ICA_method='amica';
+RELAX_cfg.n_ICA_comp='auto'; % Number of ICA components to use (only relevant for PICARD and AMICA)
 RELAX_cfg.Report_all_ICA_info='yes'; % set to yes to provide detailed report of ICLabel artifact information. Runs ~20s slower per file.
 RELAX_cfg.Clean_other_comps='no'; % set to yes to clean independent components other than blinks and muscle activity
 

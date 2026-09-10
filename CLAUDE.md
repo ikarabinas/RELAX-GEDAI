@@ -104,8 +104,11 @@ Stage order:
    handling" below). Impedance and bridge screens run first so PREP's whole-montage
    correlation/reference statistics are never skewed by a channel already known to be bad.
 5. **Extreme-period marking** — `RELAX_excluding_channels_and_epoching.m` (or the `_iTBS` variant for
-   TMS data with pulse artifacts) then `RELAX_excluding_extreme_values.m`; blink detection via
-   `RELAX_blinks_IQR_method.m`.
+   TMS data with pulse artifacts, or the `_boundary` variant — used automatically by
+   `RELAX_Wrapper_slurm.m` when `RELAX_cfg.RespectBoundaries=1` — which epochs each inter-boundary
+   segment independently instead of on a fixed grid, so boundary-adjacent data is evaluated rather
+   than structurally excluded; see "Boundary/discontinuity handling" below) then
+   `RELAX_excluding_extreme_values.m`; blink detection via `RELAX_blinks_IQR_method.m`.
 6. **Artifact-type marking** — `RELAX_muscle.m`, `RELAX_horizontaleye.m`, `RELAX_drift.m` build masks
    of artifact vs. clean data (padded via `RELAX_pad_brief_mask_periods.m`) used both for the MWF
    cleaning template and for post-hoc SER/ARR (signal-to-error/artifact-to-residue ratio) metrics.
@@ -134,11 +137,13 @@ analysis (interpolating channels, re-coding triggers, rejecting still-artifactua
 
 ### Naming convention for pipeline variants
 
-Suffixed files (`_slurm`, `_bart`, `_iTBS`) are dataset/execution-mode-specific copies of a base
-file with the same stage structure — not newer/older versions of each other. When fixing a bug that
-affects the shared algorithm, check whether the same fix is needed in the sibling variants
+Suffixed files (`_slurm`, `_bart`, `_iTBS`, `_boundary`) are dataset/execution-mode-specific copies of
+a base file with the same stage structure — not newer/older versions of each other. When fixing a bug
+that affects the shared algorithm, check whether the same fix is needed in the sibling variants
 (`RELAX_Wrapper.m` / `RELAX_Wrapper_slurm.m` / `RELAX_Wrapper_bart.m`, and
-`RELAX_excluding_channels_and_epoching.m` / `_iTBS.m`) rather than assuming one is canonical.
+`RELAX_excluding_channels_and_epoching.m` / `_iTBS.m` / `_boundary.m`) rather than assuming one is
+canonical. `_boundary.m`'s channel-rejection logic (everything after epoch placement) was copied from
+`_iTBS.m` rather than factored into a shared helper, so a bug fix there likely needs porting to both.
 
 `vendor/` follows a different convention: `vendor/zapline-plus/` mirrors its upstream repository
 byte-for-byte except where `vendor/zapline-plus/VENDORING.md` documents a local customization — so an
@@ -170,11 +175,19 @@ Boundary-aware already (no change needed): `pop_resample`, `pop_eegfiltnew`/`fir
 `RELAX_muscle`, `RELAX_drift`), `RELAX_ICA_subtract`, and zapline-plus **only via the vendored copy**
 (`RELAX_add_vendored_zapline()`, see "External dependencies" above) — the EEGLAB plugin copy also
 passes boundaries through but still has the nfft-grid crash on short segments that only the vendored
-copy fixes.
+copy fixes. Note that `pop_epoch`'s protection for `RELAX_excluding_channels_and_epoching` comes at a
+cost: it epochs on a fixed global 0.5s grid and relies on silently dropping any epoch that straddles a
+boundary, which leaves a sub-1s sliver of data on both sides of every boundary permanently un-epoched
+(stays `NaN` and later gets deleted by `eeg_eegrej` regardless of whether it's actually extreme) — see
+`_boundary.m` below for the fix used when `RespectBoundaries=1`.
 
 Made boundary-aware in this fork: `RELAX_filtbutter.m` (optional 7th argument; covers the Butterworth
-notch too), `RELAX_blinks_IQR_method.m`, `RELAX_targeted_wICA.m`. `RELAX_bridged_channels.m` is
-boundary-aware by construction (its epoching goes through `RELAX_get_segments`, not a fresh reshape).
+notch too), `RELAX_blinks_IQR_method.m`, `RELAX_targeted_wICA.m`,
+`RELAX_excluding_channels_and_epoching_boundary.m` (epochs each inter-boundary segment independently
+via `RELAX_get_segments`, tiling epoch placement evenly across the segment instead of relying on
+`pop_epoch` to drop boundary-straddling epochs from a global grid; used automatically instead of the
+plain function when `RespectBoundaries=1`). `RELAX_bridged_channels.m` is boundary-aware by
+construction (its epoching goes through `RELAX_get_segments`, not a fresh reshape).
 
 **Still boundary-blind — `RELAX_check_boundary_support` errors if any of these is enabled on data
 with boundaries already in the input file:** PREP `findNoisyChannels`

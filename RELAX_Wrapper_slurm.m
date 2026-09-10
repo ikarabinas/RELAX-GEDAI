@@ -325,9 +325,9 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
 
     if strcmp(RELAX_cfg.NotchFilterType,'ZaplinePlus')
         zaplineConfig = struct('plotResults',0, ...
-                               'detectionWinsize', 5, ...
+                               'detectionWinsize', 3.5, ...
                                'detailedFreqBoundsUpper', [-0.2 0.2], ...
-                               'detailedFreqBoundsLower', [-0.8 0.2], ...
+                               'detailedFreqBoundsLower', [-0.8 0.4], ...
                                'searchIndividualNoise', false);
         [EEG ] = clean_data_with_zapline_plus_eeglab_wrapper(EEG, zaplineConfig); % requires the zapline plus plugin. Best applied after downsampling to 250Hz or 500Hz.
         if ~isempty(RELAX_cfg.electrodes_2_keep_but_not_clean{1})
@@ -445,9 +445,11 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     % have been removed" and tiles its correlation windows flatly from sample 1, so on
     % data with boundary events a large fraction of windows straddle a discontinuity and
     % channel rejection becomes close to arbitrary. It is therefore skipped by default
-    % here; RELAX_excluding_channels_and_epoching performs its own boundary-safe channel
-    % rejection immediately afterwards. Set Perform_PREP_bad_channel_rejection=1 to
-    % restore the original behaviour on data with no discontinuities.
+    % here; the epoching stage immediately afterwards (RELAX_excluding_channels_and_epoching,
+    % or its _boundary variant when RELAX_cfg.RespectBoundaries=1 - see CLAUDE.md's
+    % "Boundary/discontinuity handling") performs its own channel rejection on epochs that
+    % never straddle a discontinuity. Set Perform_PREP_bad_channel_rejection=1 to restore
+    % the original behaviour on data with no discontinuities.
     if ~isfield(RELAX_cfg,'Perform_PREP_bad_channel_rejection')
         RELAX_cfg.Perform_PREP_bad_channel_rejection = 1; % absent = original behaviour
     end
@@ -476,7 +478,16 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
 
     continuousEEG=EEG;
 
-    [continuousEEG, epochedEEG] = RELAX_excluding_channels_and_epoching(continuousEEG, RELAX_cfg); % Epoch data, detect extremely bad data, delete channels if over the set threshold for proportion of data affected by extreme outlier for each electrode
+    if RELAX_cfg.RespectBoundaries==1
+        % Boundary-aware variant: epochs are tiled within each inter-boundary segment
+        % (via RELAX_get_segments) instead of on a fixed grid across the whole
+        % recording, so data adjacent to a 'boundary' event is still evaluated rather
+        % than left un-epoched (NaN) and later swept into ExtremelyBadPeriodsForDeletion
+        % regardless of whether it's actually extreme.
+        [continuousEEG, epochedEEG] = RELAX_excluding_channels_and_epoching_boundary(continuousEEG, RELAX_cfg); % Epoch data, detect extremely bad data, delete channels if over the set threshold for proportion of data affected by extreme outlier for each electrode
+    else
+        [continuousEEG, epochedEEG] = RELAX_excluding_channels_and_epoching(continuousEEG, RELAX_cfg); % Epoch data, detect extremely bad data, delete channels if over the set threshold for proportion of data affected by extreme outlier for each electrode
+    end
     [continuousEEG, epochedEEG] = RELAX_excluding_extreme_values(continuousEEG, epochedEEG, RELAX_cfg); % Mark extreme periods for exclusion from MWF cleaning, and deletion before wICA cleaning
 
     % Use the continuous data to detect eye blinks and mark

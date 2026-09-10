@@ -49,6 +49,17 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
         RELAX_cfg.n_ICA_comp=[];
     end
 
+    % if automatic detection of the number of ICA components to use is enabled, set it to the default value of sqrt(n_samples/30) (rounded down to the nearest integer), but not exceeding the number of channels in the EEG data.
+    if ~isempty(RELAX_cfg.n_ICA_comp) && ~strcmp(RELAX_cfg.ICA_method, 'picard') && ~strcmp(RELAX_cfg.ICA_method, 'amica')
+        error('Setting the number of ICA components is only supported for PICARD and AMICA.');
+    end
+    if ischar(RELAX_cfg.n_ICA_comp) && strcmp(RELAX_cfg.n_ICA_comp, 'auto')
+        RELAX_cfg.n_ICA_comp = floor(sqrt(EEG.pnts/30));
+        RELAX_cfg.n_ICA_comp = min(RELAX_cfg.n_ICA_comp, EEG.nbchan);
+    elseif isempty(RELAX_cfg.n_ICA_comp) || RELAX_cfg.n_ICA_comp > EEG.nbchan
+        RELAX_cfg.n_ICA_comp = EEG.nbchan;
+    end
+
     % run ICA:
     if strcmp(RELAX_cfg.ICA_method,'extended_infomax_ICA')
         [EEG_with_ICA, ~] = pop_runica_nwb(EEG, 'extended',1,'interupt','on');
@@ -126,10 +137,11 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
         mkdir([filepath filesep 'AMICAtmp']);
         outdir = [filepath filesep 'AMICAtmp' filesep];
         % Run AMICA:    
-        [EEG_with_ICA.icaweights, EEG_with_ICA.icasphere, ~] = runamica15(EEG_with_ICA.data, 'num_chans', EEG.nbchan, 'num_models',num_models,'outdir',outdir,'numprocs', numprocs, 'max_threads', max_threads, 'max_iter',max_iter,'pcakeep', EEG.nbchan, 'do_reject', 1, 'numrej', 15, 'rejsig', 3, 'rejint', 1);
+        [EEG_with_ICA.icaweights, EEG_with_ICA.icasphere, ~] = runamica15(EEG_with_ICA.data, 'num_chans', EEG.nbchan, 'num_models',num_models,'outdir',outdir,'numprocs', numprocs, 'max_threads', max_threads, 'max_iter',max_iter,'pcakeep', RELAX_cfg.n_ICA_comp, 'do_reject', 1, 'numrej', 15, 'rejsig', 3, 'rejint', 1);
         W = EEG_with_ICA.icaweights*EEG_with_ICA.icasphere;
-        A = inv(W);
+        % A = inv(W);
         EEG_with_ICA = eeg_checkset(EEG_with_ICA, 'ica'); 
+        A = EEG_with_ICA.icawinv;
         if isempty(EEG_with_ICA.icaact)==1
             EEG_with_ICA.icaact = (EEG_with_ICA.icaweights*EEG_with_ICA.icasphere)*EEG_with_ICA.data(EEG_with_ICA.icachansind,:);      
             EEG_with_ICA.icaact = reshape( EEG_with_ICA.icaact, size(EEG_with_ICA.icaact,1), EEG_with_ICA.pnts, EEG_with_ICA.trials);
@@ -137,11 +149,7 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
         Component=reshape(EEG_with_ICA.icaact, size(EEG_with_ICA.icaact,1), []);
     elseif strcmp(RELAX_cfg.ICA_method,'picard') % Run PICARD-O
         disp('Running Picard ICA.')
-        if ~isempty(RELAX_cfg.n_ICA_comp)
-            [EEG_with_ICA, ~] = pop_runica_nwb(EEG, 'picard', 'mode','ortho','tol',1e-6,'maxiter',2000,'pca',RELAX_cfg.n_ICA_comp); % set tol and maxiter to improve reproducibility
-        else
-            [EEG_with_ICA, ~] = pop_runica_nwb(EEG, 'picard', 'mode','ortho','tol',1e-6,'maxiter',2000); % set tol and maxiter to improve reproducibility
-        end
+        [EEG_with_ICA, ~] = pop_runica_nwb(EEG, 'picard', 'mode','ortho','tol',1e-6,'maxiter',2000,'pca',RELAX_cfg.n_ICA_comp); % set tol and maxiter to improve reproducibility
         W = EEG_with_ICA.icaweights*EEG_with_ICA.icasphere;
 %         A = inv(W);
         A = EEG_with_ICA.icawinv;
@@ -394,7 +402,7 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
     % so 1000Hz sampling rates require ((number of channels)^2)*120)
     % (https://sccn.ucsd.edu/wiki/Makoto%27s_useful_EEGLAB_code)
     ms_per_sample=(1000/EEG.srate);
-    if ((EEG.nbchan^2)*(120/ms_per_sample))>EEG.pnts
+    if ((RELAX_cfg.n_ICA_comp^2)*(120/ms_per_sample))>EEG.pnts
         EEG.RELAXProcessing_wICA.DataMaybeTooShortForValidICA='yes';
     else
         EEG.RELAXProcessing_wICA.DataMaybeTooShortForValidICA='no';
