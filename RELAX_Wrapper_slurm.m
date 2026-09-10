@@ -385,6 +385,56 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
         fprintf('Skipping impedance-based channel rejection (RELAX_cfg.Perform_impedance_bad_channel_rejection=0).\n');
     end
 
+    %% Reject bridged electrode clusters detected via eBridge:
+    % Bridged electrodes (electrolyte spreading between adjacent contacts) report a
+    % near-identical, spatially smeared voltage; RELAX_bridged_channels flags them by an
+    % electrical-distance criterion computed directly from the data (Alschuler et al.
+    % 2014). Unlike the impedance screen above, this is a data-driven measurement, not
+    % metadata that could itself be wrong, so nothing here is capped the way the
+    % impedance screen caps its rejections - every flagged channel is removed. A bridge
+    % cannot be undone (both electrodes measure one shorted voltage), so the removed
+    % channels are reconstructed later by spherical interpolation from the surviving
+    % channels, the same treatment any other bad channel receives.
+    %
+    % Runs before PREP for the same reason the impedance screen does: findNoisyChannels
+    % builds a robust average reference and channel-to-channel correlations across the
+    % whole montage, so a near-perfectly-correlated bridged pair would skew its verdict
+    % on every other channel too.
+    %
+    % Absent = off: eBridge is an external EEGLAB plugin not bundled with this repo, and
+    % this is new behaviour, so it must not switch itself on for a user who has not
+    % installed it or opted in.
+    if ~isfield(RELAX_cfg,'Perform_bridged_channel_rejection')
+        RELAX_cfg.Perform_bridged_channel_rejection = 0;
+    end
+    if ~isfield(RELAX_cfg,'BridgeMaxProportionChannels')
+        RELAX_cfg.BridgeMaxProportionChannels = 0.10; % QC flag only, see RELAX_bridged_channels
+    end
+    if ~isfield(RELAX_cfg,'BridgeMaxClusterSize')
+        RELAX_cfg.BridgeMaxClusterSize = 4; % QC flag only, see RELAX_bridged_channels
+    end
+    EEG.RELAXProcessingExtremeRejections.BridgedChannelToReject={};
+    if RELAX_cfg.Perform_bridged_channel_rejection == 1
+        [BridgedChannelToReject, BridgeScreenInfo] = RELAX_bridged_channels(EEG, ...
+            'RespectBoundaries', RELAX_cfg.RespectBoundaries, ...
+            'MaxProportionChannels', RELAX_cfg.BridgeMaxProportionChannels, ...
+            'MaxClusterSize', RELAX_cfg.BridgeMaxClusterSize);
+        EEG.RELAXProcessingExtremeRejections.BridgedChannelToReject = BridgedChannelToReject;
+        EEG.RELAX.BridgeScreen = BridgeScreenInfo;
+        if ~BridgeScreenInfo.available
+            warning('Bridge screen unavailable for %s (%s) - no channels rejected on bridging.', FileName, BridgeScreenInfo.status);
+        elseif isempty(BridgedChannelToReject)
+            fprintf('Bridge screen: no bridged channels detected (%d epochs).\n', BridgeScreenInfo.numEpochs);
+        else
+            fprintf('Bridge screen: removing %d bridged channel(s) in %d cluster(s): %s\n', ...
+                numel(BridgedChannelToReject), numel(BridgeScreenInfo.clusters), strjoin(BridgedChannelToReject', ', '));
+            EEG=pop_select(EEG,'nochannel',BridgedChannelToReject);
+            EEG = eeg_checkset( EEG );
+        end
+    else
+        fprintf('Skipping bridged-channel rejection (RELAX_cfg.Perform_bridged_channel_rejection=0).\n');
+    end
+
     %% Clean flat channels and bad channels showing improbable data:
     % PREP pipeline: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4471356/
     % NOTE: findNoisyChannels states its own precondition "No segments of the EEG data
@@ -930,14 +980,34 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
             EEG.RELAX_issues_to_check.Impedance_rejected_too_many_electrodes=EEG.RELAX.ImpedanceScreen.nOverThreshold;
         end
     end
+    % The bridge screen enforces no cap on itself (see RELAX_bridged_channels), so
+    % there is nothing analogous to "rejected too many" here - just the two QC flags it
+    % raises about the recording's own reconstructability:
+    EEG.RELAX_issues_to_check.Bridge_screen_unavailable=0;
+    EEG.RELAX_issues_to_check.Bridge_oversized_cluster=0;
+    EEG.RELAX_issues_to_check.Bridge_excessive_bridging=0;
+    if isfield(EEG,'RELAX') && isfield(EEG.RELAX,'BridgeScreen')
+        if ~EEG.RELAX.BridgeScreen.available
+            EEG.RELAX_issues_to_check.Bridge_screen_unavailable=1;
+        else
+            if EEG.RELAX.BridgeScreen.oversizedCluster
+                EEG.RELAX_issues_to_check.Bridge_oversized_cluster=EEG.RELAX.BridgeScreen.nBridgedChannels;
+            end
+            if EEG.RELAX.BridgeScreen.excessiveBridging
+                EEG.RELAX_issues_to_check.Bridge_excessive_bridging=EEG.RELAX.BridgeScreen.nBridgedChannels;
+            end
+        end
+    end
     if (EEG.RELAXProcessingExtremeRejections.NumberOfMuscleContaminatedChannelsRecomendedToDelete...
             +EEG.RELAXProcessingExtremeRejections.NumberOfExtremeNoiseChannelsRecomendedToDelete...
-            +size(EEG.RELAXProcessingExtremeRejections.PREPBasedChannelToReject,1))...
+            +size(EEG.RELAXProcessingExtremeRejections.PREPBasedChannelToReject,1)...
+            +size(EEG.RELAXProcessingExtremeRejections.BridgedChannelToReject,1))...
             >=RELAX_cfg.MaxProportionOfElectrodesThatCanBeDeleted*size(EEG.allchan,2)
         EEG.RELAX_issues_to_check.ElectrodeRejectionRecommendationsMetOrExceededThreshold=...
             (EEG.RELAXProcessingExtremeRejections.NumberOfMuscleContaminatedChannelsRecomendedToDelete...
             +EEG.RELAXProcessingExtremeRejections.NumberOfExtremeNoiseChannelsRecomendedToDelete...
-            +size(EEG.RELAXProcessingExtremeRejections.PREPBasedChannelToReject,1));
+            +size(EEG.RELAXProcessingExtremeRejections.PREPBasedChannelToReject,1)...
+            +size(EEG.RELAXProcessingExtremeRejections.BridgedChannelToReject,1));
     else
         EEG.RELAX_issues_to_check.ElectrodeRejectionRecommendationsMetOrExceededThreshold=0;
     end
