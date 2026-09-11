@@ -46,7 +46,7 @@ function [pxx, f] = pwelch_segmented(data, window, noverlap, nfft, fs, boundarie
 
     boundaries = unique(sort([1; boundaries(:); (size(data, 1) + 1)]));
     pxx_total = 0;
-    total_segments = 0;
+    total_segment_samples = 0;
     f = [];
 
     for i = 1:length(boundaries) - 1
@@ -59,13 +59,13 @@ function [pxx, f] = pwelch_segmented(data, window, noverlap, nfft, fs, boundarie
             % vector comes back into a separate variable. Assigning f into the nfft
             % argument would switch pwelch to Goertzel from the second segment on.
             [pxx_seg, f] = pwelch(data(start_idx:end_idx, :), window, noverlap, nfft, fs);
-            pxx_total = pxx_total + pxx_seg;
-            total_segments = total_segments + 1;
+            pxx_total = pxx_total + seg_len * pxx_seg;
+            total_segment_samples = total_segment_samples + seg_len;
         end
     end
 
-    if total_segments > 0
-        pxx = pxx_total / total_segments;
+    if total_segment_samples > 0
+        pxx = pxx_total / total_segment_samples;
     else
         [pxx, f] = pwelch(data, window, noverlap, nfft, fs);
     end

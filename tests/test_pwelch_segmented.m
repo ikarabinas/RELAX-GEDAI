@@ -8,8 +8,7 @@ function test_pwelch_segmented()
     nChan  = 4;
 
     % ---------------------------------------------------------------------
-    % 1. Every segment must contribute with equal weight.
-    % Three identical segments must average to the PSD of any one of them.
+    % 1. Identical segments must produce the PSD of any one of them.
     % The pre-fix code assigned pwelch's frequency-vector output back into the
     % variable it passed as pwelch's nfft argument, so segments 2..N ran through
     % pwelch's Goertzel path, which omits the one-sided power doubling and
@@ -27,7 +26,26 @@ function test_pwelch_segmented()
         'identical segments must average to one segment''s PSD (rel err %.4g)', relErr);
 
     % ---------------------------------------------------------------------
-    % 2. An explicit nfft must give the +/-0.05 Hz fine-peak window real bins.
+    % 2. Segment PSDs are weighted by the number of samples they represent.
+    % A longer segment must have proportionally more influence than a shorter
+    % segment when their spectra differ.
+    % ---------------------------------------------------------------------
+    shortLen = 1000;
+    longLen  = 3000;
+    short   = randn(shortLen, nChan);
+    long    = 2 * randn(longLen, nChan);
+    unequal = [short; long];
+    unequalBounds = shortLen + 1;
+    [pxxWeighted, ~] = pwelch_segmented(unequal, [], [], 8192, fs, unequalBounds);
+    [pxxShort, ~] = pwelch(short, hanning(shortLen), [], 8192, fs);
+    [pxxLong, ~]  = pwelch(long, hanning(shortLen), [], 8192, fs);
+    expected = (shortLen * pxxShort + longLen * pxxLong) / (shortLen + longLen);
+    weightedErr = max(abs(pxxWeighted(:) - expected(:))) / max(expected(:));
+    assert(weightedErr < 1e-10, ...
+        'segment PSDs must be weighted by segment length (rel err %.4g)', weightedErr);
+
+    % ---------------------------------------------------------------------
+    % 3. An explicit nfft must give the +/-0.05 Hz fine-peak window real bins.
     % ---------------------------------------------------------------------
     nfft = 2^nextpow2(round(fs / (0.05/1.5)));   % 8192 at fs = 250
     [~, f] = pwelch_segmented(data, [], [], nfft, fs, bounds);
@@ -35,7 +53,7 @@ function test_pwelch_segmented()
         'the +/-0.05 Hz fine-peak window must contain at least one bin');
 
     % ---------------------------------------------------------------------
-    % 3. Regression witness: omitting nfft reintroduces the crash condition.
+    % 4. Regression witness: omitting nfft reintroduces the crash condition.
     % The window-derived grid on 7.93 s segments has bins at 59.937 and 60.059
     % and none in between. Kept so nobody "simplifies" the call sites back.
     % ---------------------------------------------------------------------
@@ -44,7 +62,7 @@ function test_pwelch_segmented()
         'expected the window-derived grid to be too coarse - this is what passing nfft fixes');
 
     % ---------------------------------------------------------------------
-    % 4. nfft below the window length must be raised, never wrap the data.
+    % 5. nfft below the window length must be raised, never wrap the data.
     % ---------------------------------------------------------------------
     [~, fSmall] = pwelch_segmented(data, [], [], 256, fs, bounds);
     dfSmall = fSmall(2) - fSmall(1);
@@ -52,7 +70,7 @@ function test_pwelch_segmented()
         'nfft smaller than the window must be raised so pwelch zero-pads instead of wrapping');
 
     % ---------------------------------------------------------------------
-    % 5. Continuous data must behave exactly like a plain full-window pwelch.
+    % 6. Continuous data must behave exactly like a plain full-window pwelch.
     % ---------------------------------------------------------------------
     cont     = randn(4000, nChan);
     [pc, ~]  = pwelch_segmented(cont, [], [], [], fs, []);
@@ -61,7 +79,7 @@ function test_pwelch_segmented()
         'boundary-free data must match a plain full-window pwelch');
 
     % ---------------------------------------------------------------------
-    % 6. Known limitation, characterised deliberately: the window still
+    % 7. Known limitation, characterised deliberately: the window still
     % collapses to the SHORTEST segment, so a short fragment at a chunk edge
     % degrades the whole chunk's spectrum. Deferred - see the plan's "Deferred"
     % section. Update this test when that is addressed.
