@@ -268,14 +268,22 @@ function [continuousEEG, epochedEEG] = RELAX_excluding_extreme_values(continuous
     NaNList=epochedEEG.RELAX.NaNsForExtremeOutlierPeriods;
     NaNList(isnan(NaNList))=1;
 
-    ix_nanstart=find(diff(NaNList)==1)+1;  % indices where list goes from 0 to 1
-    ix_nanend=find(diff(NaNList)==-1);  % indices where list goes from 1 to 0
-    
-    epochedEEG.RELAXProcessingExtremeRejections.ExtremelyBadPeriodsForDeletion(:,2)=ix_nanend';
-    epochedEEG.RELAXProcessingExtremeRejections.ExtremelyBadPeriodsForDeletion(size(epochedEEG.RELAXProcessingExtremeRejections.ExtremelyBadPeriodsForDeletion,1)+1,2)=size(epochedEEG.RELAX.NaNsForExtremeOutlierPeriods,2);
-    epochedEEG.RELAXProcessingExtremeRejections.ExtremelyBadPeriodsForDeletion(1,1)=1;
-    epochedEEG.RELAXProcessingExtremeRejections.ExtremelyBadPeriodsForDeletion(2:1+size(ix_nanstart,2),1)=ix_nanstart';
-    
+    % Pad the list with 0s to correctly capture bad periods hitting the edges
+    % (diff() can't see a bad period already running at sample 1 or one still
+    % running at the last sample; unconditionally treating sample 1 as a start
+    % and the last sample as an end, as previous versions did, left the start
+    % and end index lists mismatched in length whenever NaNList(1)==1, zero-
+    % padding the shorter column and producing a 0 index downstream).
+    paddedNaNList = [0, NaNList, 0];
+    ix_nanstart = find(diff(paddedNaNList) == 1);     % indices where list goes from 0 to 1
+    ix_nanend   = find(diff(paddedNaNList) == -1) - 1; % indices where list goes from 1 to 0
+
+    epochedEEG.RELAXProcessingExtremeRejections.ExtremelyBadPeriodsForDeletion = [];
+    if ~isempty(ix_nanstart)
+        epochedEEG.RELAXProcessingExtremeRejections.ExtremelyBadPeriodsForDeletion(:, 1) = ix_nanstart';
+        epochedEEG.RELAXProcessingExtremeRejections.ExtremelyBadPeriodsForDeletion(:, 2) = ix_nanend';
+    end
+
     epochedEEG.RELAX.ExtremelyBadPeriodsForDeletion=epochedEEG.RELAXProcessingExtremeRejections.ExtremelyBadPeriodsForDeletion;
     % Transfer details into continuousEEG struct also:
     continuousEEG.RELAXProcessing=epochedEEG.RELAXProcessing;
