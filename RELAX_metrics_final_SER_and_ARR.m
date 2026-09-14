@@ -60,7 +60,7 @@ function [continuousEEG, d] = RELAX_metrics_final_SER_and_ARR(rawEEG, continuous
     
     %% Align channels before calculating artifact - IMK added section
     % Necesary for instances of channel mismatch between rawEEG and
-    % continuous EEG. The required interpolation or removed chans prior to
+    % continuous EEG. The required interpolation of removed chans prior to
     % GEDAI leadfield mapping creates this mismatch, and channel alignment here is the fix
     size(averageref_rawEEG.data)
     size(continuousEEG.data)

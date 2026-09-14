@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=relax-gedai
-#SBATCH --array=1-15%15
+#SBATCH --array=1-33%17
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=60G
@@ -17,5 +17,5 @@ module load matlab/R2023a
 # Export task ID
 export SLURM_ARRAY_TASK_ID=$SLURM_ARRAY_TASK_ID
 
-# Run MATLAB and let it read the env var via getenv()
+# Run MATLAB
 matlab -nodisplay -nosplash -nodesktop -r "run('RELAX_SET_PARAMETERS_AND_RUN_slurm.m'); exit"

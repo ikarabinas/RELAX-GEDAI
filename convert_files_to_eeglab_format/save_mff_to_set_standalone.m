@@ -5,8 +5,8 @@
 N_CPU = 16;
 
 % 
-raw_dir = '/athena/grosenicklab/store/tms_eeg/mdd_dlpfc/subject67_m582_dlpfc_54/m582_dlpfc_day1';
-save_dir= '/athena/grosenicklab/scratch/imk2003/acc_tmseeg/eeg_data/RELAX_to_clean/twICA_dlpfc_1.5.26';
+raw_dir = '/athena/grosenicklab/store/tms_eeg/mdd_dmpfc/subject32_m381_dmpfc_54/m381_dmpfc_day1';
+save_dir= '/athena/grosenicklab/scratch/imk2003/acc_tmseeg/eeg_data/RELAX_GEDAI/RELAX_twICA_GEDAI-dmpfc';
 
 % Iterate over each resting state recording
 if ~exist(save_dir, 'dir')

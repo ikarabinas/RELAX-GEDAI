@@ -8,9 +8,9 @@ Here, the data have been stored in a directory structure as follows: .../tms_eeg
 Remember to load MATLAB in the terminal with "module load matlab/R2023a" or an equivalent command before running this script with "python run_set_conversion.py"
 '''
 # Define data paths and read in participant IDs csv
-DATA_DIR="/athena/grosenicklab/store/tms_eeg/ocd_rofc/"
+DATA_DIR="/athena/grosenicklab/store/tms_eeg/ocd_lofc/"
 SAVE_DIR="/athena/grosenicklab/scratch/imk2003/acc_tmseeg/eeg_data/RELAX_GEDAI/RELAX_twICA_GEDAI-ofc/"
-ppts_csv_path="/home/imk2003/Documents/updated_subject_list_rofc.csv"
+ppts_csv_path="/home/imk2003/Documents/updated_subject_list_lofc.csv"
 matlab_script = '/home/imk2003/Documents/MATLAB/eeglab/plugins/RELAX/convert_files_to_eeglab_format/save_mff_to_set.m'
 ppts_csv = pd.read_csv(ppts_csv_path)
 days_list = ['day1', 'day2', 'day3', 'day4', 'day5', 'week', 'baseline']
@@ -58,7 +58,17 @@ def get_eeg_day_path(ppt_id, analysis_day):
         day_path = str([dir for dir in os.listdir(ppt_dirpath) if analysis_day in dir][0])
         ppt_day_dirpath = os.path.join(ppt_dirpath, day_path)
     except IndexError:
-        raise FileNotFoundError(f'No data found for {ppt_id} {analysis_day}.')
+        if 'crossover' in ppt_id:
+            stripped_id = ppt_id.split('_')[0]  # e.g. 'c110_crossover' -> 'c110'
+            try:
+                ppt_dir = str([dir for dir in os.listdir(DATA_DIR) if stripped_id in dir][0])
+                ppt_dirpath = os.path.join(DATA_DIR, ppt_dir)
+                day_path = str([dir for dir in os.listdir(ppt_dirpath) if analysis_day in dir][0])
+                ppt_day_dirpath = os.path.join(ppt_dirpath, day_path)
+            except IndexError:
+                raise FileNotFoundError(f'No data found for {ppt_id} {analysis_day} (also tried {stripped_id}).')
+        else:
+            raise FileNotFoundError(f'No data found for {ppt_id} {analysis_day}.')
     return ppt_day_dirpath
 
 # Run .set file conversion for each participant

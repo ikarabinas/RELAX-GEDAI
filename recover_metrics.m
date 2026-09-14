@@ -6,7 +6,6 @@
 
 eeglab;
 
-%datadir = '/athena/grosenicklab/scratch/imk2003/acc_tmseeg/eeg_data/RELAX_GEDAI/RELAX_twICA_GEDAI-dmpfc';
 datadir = '/athena/grosenicklab/scratch/imk2003/acc_tmseeg/eeg_data/RELAX_GEDAI/RELAX_twICA_GEDAI-dlpfc';
 preprocessing_label = 'RELAX_twICA_GEDAI-dlpfc';
 

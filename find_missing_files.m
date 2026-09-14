@@ -4,7 +4,7 @@
 % Returns: "missing_files_report.csv" and "missing_files_only.csv"
 
 %% ---- Paths ----
-data_dir = '/athena/grosenicklab/scratch/imk2003/acc_tmseeg/eeg_data/RELAX_GEDAI/RELAX_twICA_GEDAI-ofc';
+data_dir = '/athena/grosenicklab/scratch/imk2003/acc_tmseeg/eeg_data/RELAX_GEDAI/RELAX_twICA_GEDAI-dmpfc';
 output_dir = fullfile(data_dir, 'RELAXProcessed', 'Cleaned_Data');
 csv_outpath = fullfile(data_dir, 'RELAXProcessed', 'missing_files_report.csv');
 

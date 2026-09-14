@@ -147,7 +147,7 @@ addpath('/home/imk2003/Documents/MATLAB/eeglab/plugins/RELAX/');
 RELAX_cfg.caploc=[]; % path containing electrode positions. Set to =[] if electrode locations are already in your EEG file.
 
 % Specify the to be processed file locations:
-RELAX_cfg.myPath='/athena/grosenicklab/scratch/imk2003/acc_tmseeg/eeg_data/RELAX_GEDAI/RELAX_twICA_GEDAI-dmpfc';
+RELAX_cfg.myPath='/athena/grosenicklab/scratch/imk2003/acc_tmseeg/eeg_data/RELAX_GEDAI/RELAX_twICA_GEDAI-dmpfc/GEDAI_errored';
 
 % Specify whether all data is in a single folder or data are in BIDS format
 % (each EEG file within its own separate folder):
@@ -309,7 +309,7 @@ RELAX_cfg.LowPassFilter=115; % If you filter out data below 75Hz, you can't use 
 
 RELAX_cfg.NotchFilterType='Butterworth'; % set as 'Butterworth' to use Butterworth filter, 'ZaplinePlus' to use ZaplinePlus, or PMnotch to use ERPLAB's stop-band Parks-McClellan Notch (requires ERPLAB to be installed). 
 % ZaplinePlus works best on data sampled at 512Hz or below, consider downsampling if above this.
-RELAX_cfg.LineNoiseFrequency=[60]; % Frequencies for bandstop filter in order to address line noise (set to 60 in countries with 60Hz line noise, and 50 in countries with 50Hz line noise).
+RELAX_cfg.LineNoiseFrequency=[60,120]; % Frequencies for bandstop filter in order to address line noise (set to 60 in countries with 60Hz line noise, and 50 in countries with 50Hz line noise).
 
 RELAX_cfg.ElectrodesToDelete={'E257'};
 % If your EEG recording includes non-scalp electrodes or electrodes that you want to delete before cleaning, you can set them to be deleted here. 

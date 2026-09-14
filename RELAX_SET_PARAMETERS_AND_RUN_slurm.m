@@ -147,7 +147,7 @@ addpath('/home/imk2003/Documents/MATLAB/eeglab/plugins/RELAX/');
 RELAX_cfg.caploc=[]; % path containing electrode positions. Set to =[] if electrode locations are already in your EEG file.
 
 % Specify the to be processed file locations:
-RELAX_cfg.myPath='/athena/grosenicklab/scratch/imk2003/acc_tmseeg/eeg_data/RELAX_GEDAI/RELAX_twICA_GEDAI-ofc';
+RELAX_cfg.myPath='/athena/grosenicklab/scratch/imk2003/acc_tmseeg/eeg_data/RELAX_GEDAI/RELAX_twICA_GEDAI-dmpfc';
 
 % Specify whether all data is in a single folder or data are in BIDS format
 % (each EEG file within its own separate folder):
@@ -237,73 +237,6 @@ if isempty(RELAX_cfg.files)
     return
 end
 
-%     RELAX_cfg.dirList=dir([RELAX_cfg.myPath '\**\*.set']);
-%     already_processed=[];
-%     for f=1:size(RELAX_cfg.dirList,1)
-%         if contains(RELAX_cfg.dirList(f).name,'RELAX')
-%             already_processed(f)=1;
-%         end
-%     end
-%     RELAX_cfg.dirList(already_processed==1,:)=[]; % remove filenames from this list if they have already been cleaned
-%     RELAX_cfg.folders={RELAX_cfg.dirList.folder};
-% else
-%     RELAX_cfg.dirList = dir('*.set');
-% 
-%     % IMK added -- Check output folder for already processed files and skip
-%     already_cleaned = dir(fullfile(RELAX_cfg.myPath, 'RELAXProcessed', 'Cleaned_Data', '*RELAX*.set'));
-%     already_cleaned_names = {already_cleaned.name};
-% 
-%     already_processed = zeros(size(RELAX_cfg.dirList, 1), 1);
-%     for f = 1:size(RELAX_cfg.dirList, 1)
-%         % Strip extension, check if a cleaned version of this file exists
-%         [~, basename, ~] = fileparts(RELAX_cfg.dirList(f).name);
-%         if any(contains(already_cleaned_names, basename))
-%             already_processed(f) = 1;
-%         end
-%     end
-%     RELAX_cfg.dirList(already_processed == 1, :) = [];
-%     % --------------------------------------
-% end
-% 
-% RELAX_cfg.files={RELAX_cfg.dirList.name};
-% if isempty(RELAX_cfg.files)
-%     disp('No files found..')
-% end
-% 
-% %% ---- NEW: select this array task's participant ----
-% task_id = str2double(getenv('SLURM_ARRAY_TASK_ID'));
-% if isnan(task_id)
-%     task_id = 1; % fallback for interactive/local runs
-% end
-% 
-% % Extract a participant ID from each filename (ADJUST REGEX to your naming scheme)
-% allFiles = RELAX_cfg.files;
-% participantIDs = cell(size(allFiles));
-% for f = 1:numel(allFiles)
-%     tok = regexp(allFiles{f}, '^([A-Za-z]\d+)', 'tokens');
-%     if isempty(tok)
-%         error('Could not parse participant ID from filename: %s', allFiles{f});
-%     end
-%     participantIDs{f} = tok{1}{1};
-% end
-% 
-% uniqueParticipants = unique(participantIDs, 'stable');
-% if task_id > numel(uniqueParticipants)
-%     fprintf('Array task %d has no participant to process (only %d participants). Exiting.\n', ...
-%         task_id, numel(uniqueParticipants));
-%     return
-% end
-% 
-% thisParticipant = uniqueParticipants{task_id};
-%     keepIdx = strcmp(participantIDs, thisParticipant);
-% 
-%     RELAX_cfg.dirList = RELAX_cfg.dirList(keepIdx);
-%     RELAX_cfg.files   = RELAX_cfg.files(keepIdx);
-%     if strcmp(RELAX_cfg.all_data_in_1_folder_or_BIDS_format,'BIDS')
-%         RELAX_cfg.folders = RELAX_cfg.folders(keepIdx);
-%     end
-
-%% ---- end NEW ----
 
 %% Parameters that can be specified:
 
@@ -423,7 +356,7 @@ RELAX_cfg.LowPassFilter=115; % If you filter out data below 75Hz, you can't use 
 
 RELAX_cfg.NotchFilterType='Butterworth'; % set as 'Butterworth' to use Butterworth filter, 'ZaplinePlus' to use ZaplinePlus, or PMnotch to use ERPLAB's stop-band Parks-McClellan Notch (requires ERPLAB to be installed). 
 % ZaplinePlus works best on data sampled at 512Hz or below, consider downsampling if above this.
-RELAX_cfg.LineNoiseFrequency=[60]; % Frequencies for bandstop filter in order to address line noise (set to 60 in countries with 60Hz line noise, and 50 in countries with 50Hz line noise).
+RELAX_cfg.LineNoiseFrequency=[60, 120]; % Frequencies for bandstop filter in order to address line noise (set to 60 in countries with 60Hz line noise, and 50 in countries with 50Hz line noise).
 
 RELAX_cfg.ElectrodesToDelete={'E257'};  % Remove reference chan -- RELAX assumes it is no longer in data in RELAX_average_rereference
 % If your EEG recording includes non-scalp electrodes or electrodes that you want to delete before cleaning, you can set them to be deleted here. 
