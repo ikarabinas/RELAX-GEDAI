@@ -195,6 +195,12 @@ Detection, per channel, on the raw unfiltered data:
 5. Require the level change to be **sustained** - the rise-time criterion the exploratory detector
    lacked - and enforce `RefractoryMs` (default 20) minimum spacing between steps on one channel.
 
+`SustainMs` (default 100) sets the window either side used to measure the pre- and post-step level -
+the level change must persist across it, which is what makes this a step detector rather than a spike
+detector. `MinRiseFraction` (default 0.5) is the rise-time criterion itself: the fraction of the total
+level change that must occur in the single largest derivative sample. A genuine pop delivers most of
+its change in one sample; a ramp spreads it over thousands and fails.
+
 `steps` is a struct of parallel arrays, one entry per detected step, sorted by channel then sample.
 An empty detection returns `0x1` / `{}` fields, never a bare `[]`, so `numel(steps.sample)` is always
 valid:
@@ -330,6 +336,8 @@ RELAX_cfg.PopDetect_MedianFilterOrder             = 9;
 RELAX_cfg.PopDetect_ZThreshold                    = 20;
 RELAX_cfg.PopDetect_MinAmplitudeMicrovolts        = 10;
 RELAX_cfg.PopDetect_RefractoryMs                  = 20;
+RELAX_cfg.PopDetect_SustainMs                     = 100;
+RELAX_cfg.PopDetect_MinRiseFraction               = 0.5;
 RELAX_cfg.PopDetect_StepsPerMinuteToRejectChannel = 30;
 % repair
 RELAX_cfg.PopRepair_MaxPolyOrder                  = 3;

@@ -236,6 +236,121 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     EEG = eeg_checkset( EEG );
     EEG.allchan=EEG.chanlocs; % take list of all included channels before any rejections
 
+    % The shared channel-rejection budget is taken against the montage EEG.allchan just
+    % recorded, so it must be created here, before any screen has removed a channel.
+    if ~isfield(RELAX_cfg,'MaxProportionOfElectrodesThatCanBeDeleted')
+        RELAX_cfg.MaxProportionOfElectrodesThatCanBeDeleted = 0.10;
+    end
+    EEG = RELAX_channel_budget(EEG, 'init', RELAX_cfg.MaxProportionOfElectrodesThatCanBeDeleted);
+
+    %% Detect and repair electrode pops:
+    % A pop is an abrupt change in one channel's DC baseline. This runs BEFORE the notch
+    % and band-pass filters, at the native sample rate, because a zero-phase highpass
+    % converts a step into a multi-second bipolar excursion extending in BOTH time
+    % directions - after which there is no step left to find and the damage has already
+    % spread to data recorded before the pop occurred.
+    %
+    % Absent = off: this is new behaviour and must not switch itself on for a dataset that
+    % has never been checked for pops.
+    if ~isfield(RELAX_cfg,'Perform_pop_artifact_repair')
+        RELAX_cfg.Perform_pop_artifact_repair = 0;
+    end
+    EEG.RELAXProcessingExtremeRejections.PopBasedChannelToReject={};
+    if RELAX_cfg.Perform_pop_artifact_repair == 1
+        if ~isfield(RELAX_cfg,'PopDetect_MedianFilterOrder');             RELAX_cfg.PopDetect_MedianFilterOrder = 9;        end
+        if ~isfield(RELAX_cfg,'PopDetect_ZThreshold');                    RELAX_cfg.PopDetect_ZThreshold = 20;              end
+        if ~isfield(RELAX_cfg,'PopDetect_MinAmplitudeMicrovolts');        RELAX_cfg.PopDetect_MinAmplitudeMicrovolts = 10;  end
+        if ~isfield(RELAX_cfg,'PopDetect_RefractoryMs');                  RELAX_cfg.PopDetect_RefractoryMs = 20;            end
+        if ~isfield(RELAX_cfg,'PopDetect_SustainMs');                     RELAX_cfg.PopDetect_SustainMs = 100;              end
+        if ~isfield(RELAX_cfg,'PopDetect_MinRiseFraction');                RELAX_cfg.PopDetect_MinRiseFraction = 0.5;       end
+        if ~isfield(RELAX_cfg,'PopDetect_StepsPerMinuteToRejectChannel'); RELAX_cfg.PopDetect_StepsPerMinuteToRejectChannel = 30; end
+        if ~isfield(RELAX_cfg,'PopRepair_MaxPolyOrder');                  RELAX_cfg.PopRepair_MaxPolyOrder = 3;             end
+        if ~isfield(RELAX_cfg,'PopRepair_MaxCutoffHz');                   RELAX_cfg.PopRepair_MaxCutoffHz = 1.0;            end
+        if ~isfield(RELAX_cfg,'PopRepair_MaxWindowSeconds');              RELAX_cfg.PopRepair_MaxWindowSeconds = 2.0;       end
+        if ~isfield(RELAX_cfg,'PopRepair_DetrendThresh');                 RELAX_cfg.PopRepair_DetrendThresh = 3;            end
+        if ~isfield(RELAX_cfg,'PopRepair_DetrendIterations');             RELAX_cfg.PopRepair_DetrendIterations = 3;        end
+
+        [PopSteps, PopScreenInfo] = RELAX_detect_steps(EEG, ...
+            'MedianFilterOrder',             RELAX_cfg.PopDetect_MedianFilterOrder, ...
+            'ZThreshold',                    RELAX_cfg.PopDetect_ZThreshold, ...
+            'MinAmplitudeMicrovolts',        RELAX_cfg.PopDetect_MinAmplitudeMicrovolts, ...
+            'RefractoryMs',                  RELAX_cfg.PopDetect_RefractoryMs, ...
+            'SustainMs',                     RELAX_cfg.PopDetect_SustainMs, ...
+            'MinRiseFraction',               RELAX_cfg.PopDetect_MinRiseFraction, ...
+            'StepsPerMinuteToRejectChannel', RELAX_cfg.PopDetect_StepsPerMinuteToRejectChannel);
+        EEG.RELAX.PopScreen = PopScreenInfo;
+
+        if ~PopScreenInfo.available
+            warning('Pop screen unavailable for %s (%s) - no pops detected or repaired.', ...
+                FileName, PopScreenInfo.status);
+        else
+            fprintf('Pop screen: %d step(s) on %d channel(s); %d common-mode bin(s).\n', ...
+                PopScreenInfo.nSteps, PopScreenInfo.nChannelsAffected, PopScreenInfo.nCommonModeSteps);
+
+            % Population A: chronically bad contacts. Repair is meaningless on a channel
+            % with no stable baseline, so it is rejected rather than repaired. badChannels
+            % arrives ordered worst-first, which is what the budget's truncation needs.
+            [PopChannelToReject, EEG] = RELAX_channel_budget(EEG, 'spend', 'pop', PopScreenInfo.badChannels);
+            EEG.RELAXProcessingExtremeRejections.PopBasedChannelToReject = PopChannelToReject;
+            if ~isempty(PopChannelToReject)
+                fprintf('Pop screen: removing %d chronically popping channel(s): %s\n', ...
+                    numel(PopChannelToReject), strjoin(PopChannelToReject, ', '));
+                keep = ~ismember(PopSteps.label, PopChannelToReject);
+                PopSteps = structfun(@(f) f(keep), PopSteps, 'UniformOutput', false);
+                EEG = pop_select(EEG,'nochannel',PopChannelToReject);
+                EEG = eeg_checkset( EEG );
+                % RELAX_detect_steps returns channel INDICES; re-map them after pop_select
+                [~, PopSteps.channel] = ismember(PopSteps.label, {EEG.chanlocs.labels});
+            end
+
+            [EEG, PopRepairInfo] = RELAX_repair_steps(EEG, PopSteps, ...
+                'MaxPolyOrder',      RELAX_cfg.PopRepair_MaxPolyOrder, ...
+                'MaxCutoffHz',       RELAX_cfg.PopRepair_MaxCutoffHz, ...
+                'MaxWindowSeconds',  RELAX_cfg.PopRepair_MaxWindowSeconds, ...
+                'DetrendThresh',     RELAX_cfg.PopRepair_DetrendThresh, ...
+                'DetrendIterations', RELAX_cfg.PopRepair_DetrendIterations);
+            EEG.RELAX.PopRepair = PopRepairInfo;
+            if ~PopRepairInfo.available
+                warning('Pop repair unavailable for %s (%s) - steps detected but NOT repaired.', ...
+                    FileName, PopRepairInfo.status);
+            else
+                fprintf(['Pop repair: %d sub-segment(s), median %.2f s, min %.2f s; ' ...
+                         '%.1f%% of samples mean-only, %d fallback(s).\n'], ...
+                    PopRepairInfo.nSubSegments, PopRepairInfo.medianSubSegmentDuration, ...
+                    PopRepairInfo.minSubSegmentDuration, ...
+                    100*PopRepairInfo.fractionSamplesMeanOnly, ...
+                    PopRepairInfo.treatmentCounts.fallback);
+            end
+
+            % Per-file covariates. RELAX thresholds are computed from within-recording
+            % statistics, so a poppy session gets cleaned harder than a quiet one in a way
+            % that tracks its electrode quality. A downstream model predicting treatment
+            % response from session-to-session EEG change could learn the cleaning instead
+            % of the neural signal, so how hard this stage worked has to be recorded per
+            % file - see CLAUDE.md, "Saving covariates for downstream ML classification
+            % tasks". Scalars and cells only: this struct is struct2table'd below.
+            EEG.RELAXProcessingExtremeRejections.PopNSteps                = PopScreenInfo.nSteps;
+            EEG.RELAXProcessingExtremeRejections.PopNChannelsAffected     = PopScreenInfo.nChannelsAffected;
+            EEG.RELAXProcessingExtremeRejections.PopMedianStepAmplitude   = median(abs(PopSteps.amplitude));
+            EEG.RELAXProcessingExtremeRejections.PopNChannelsRejected     = numel(PopChannelToReject);
+            EEG.RELAXProcessingExtremeRejections.PopNCommonModeSteps      = PopScreenInfo.nCommonModeSteps;
+            EEG.RELAXProcessingExtremeRejections.PopDegenerateChannelCount = numel(PopScreenInfo.degenerateChannels);
+            if PopRepairInfo.available
+                EEG.RELAXProcessingExtremeRejections.PopMedianSubSegmentDuration = PopRepairInfo.medianSubSegmentDuration;
+                EEG.RELAXProcessingExtremeRejections.PopFractionSamplesMeanOnly  = PopRepairInfo.fractionSamplesMeanOnly;
+                EEG.RELAXProcessingExtremeRejections.PopMedianLowFreqVarianceRemoved = median(PopRepairInfo.lowFreqVarianceRemoved);
+                EEG.RELAXProcessingExtremeRejections.PopNOrder3OA  = PopRepairInfo.treatmentCounts.order3oa;
+                EEG.RELAXProcessingExtremeRejections.PopNOrder3    = PopRepairInfo.treatmentCounts.order3;
+                EEG.RELAXProcessingExtremeRejections.PopNOrder2    = PopRepairInfo.treatmentCounts.order2;
+                EEG.RELAXProcessingExtremeRejections.PopNOrder1    = PopRepairInfo.treatmentCounts.order1;
+                EEG.RELAXProcessingExtremeRejections.PopNMeanOnly  = PopRepairInfo.treatmentCounts.meanOnly;
+                EEG.RELAXProcessingExtremeRejections.PopNFallback  = PopRepairInfo.treatmentCounts.fallback;
+            end
+        end
+    else
+        fprintf('Skipping electrode-pop repair (RELAX_cfg.Perform_pop_artifact_repair=0).\n');
+    end
+
     %% Notch filter data:
     if strcmp(RELAX_cfg.NotchFilterType,'Butterworth')
         % Loop through list of freqs to reduce via notch filter
@@ -361,13 +476,20 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     end
     EEG.RELAXProcessingExtremeRejections.ImpedanceBasedChannelToReject={};
     if RELAX_cfg.Perform_impedance_bad_channel_rejection == 1
-        % Capped by the same budget RELAX_excluding_channels_and_epoching spends, so the
-        % two channel-rejection stages cannot between them delete more of the montage
-        % than MaxProportionOfElectrodesThatCanBeDeleted allows.
+        % Spends from the shared budget created at the top of this loop, so the pop,
+        % impedance and PREP screens cannot between them delete more of the montage than
+        % MaxProportionOfElectrodesThatCanBeDeleted allows. (Before the budget existed
+        % each screen independently capped itself at that proportion, so three screens
+        % could remove three times it.) RELAX_excluding_channels_and_epoching keeps its
+        % own later, independent cap - see RELAX_channel_budget.m for why.
+        popBudget = EEG.RELAX.ChannelBudget;
         [ImpedanceBasedChannelToReject, ImpedanceScreenInfo] = RELAX_impedance_bad_channels( ...
-            EEG.chanlocs, RELAX_cfg.MaxImpedanceKOhm, RELAX_cfg.MaxProportionOfElectrodesThatCanBeDeleted);
+            EEG.chanlocs, RELAX_cfg.MaxImpedanceKOhm, ...
+            RELAX_cfg.MaxProportionOfElectrodesThatCanBeDeleted, ...
+            max(0, popBudget.maxRejectable - popBudget.nSpent));
         EEG.RELAXProcessingExtremeRejections.ImpedanceBasedChannelToReject = ImpedanceBasedChannelToReject;
         EEG.RELAX.ImpedanceScreen = ImpedanceScreenInfo;
+        [~, EEG] = RELAX_channel_budget(EEG, 'spend', 'impedance', ImpedanceBasedChannelToReject);
         if ~ImpedanceScreenInfo.available
             warning('No usable impedances in %s - no channels rejected on impedance.', FileName);
         elseif isempty(ImpedanceBasedChannelToReject)

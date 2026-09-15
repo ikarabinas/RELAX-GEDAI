@@ -328,6 +328,27 @@ RELAX_cfg.Run_GEDAI=0;  % IMK added
 RELAX_cfg.RespectBoundaries=1; % 1 = process each stretch of data between boundary events separately, with reflection-padded edges
 RELAX_cfg.Perform_PREP_bad_channel_rejection=0; % 0 = skip PREP findNoisyChannels (boundary-blind); RELAX_excluding_channels_and_epoching still rejects bad channels boundary-safely
 
+%% Electrode-pop detection and repair (runs before any filtering, at native sample rate).
+% A pop is an abrupt DC baseline step on one channel. The 1 Hz acausal Butterworth turns
+% each one into a multi-second bipolar excursion in BOTH time directions, so repair has to
+% happen before the filter sees it. See
+% docs/superpowers/specs/2026-09-14-pop-artifact-repair-design.md
+RELAX_cfg.Perform_pop_artifact_repair             = 1;
+% Detector - the first four are FieldTrip ft_artifact_jump's own defaults
+RELAX_cfg.PopDetect_MedianFilterOrder             = 9;
+RELAX_cfg.PopDetect_ZThreshold                    = 20;
+RELAX_cfg.PopDetect_MinAmplitudeMicrovolts        = 10;
+RELAX_cfg.PopDetect_RefractoryMs                  = 20;
+RELAX_cfg.PopDetect_SustainMs                     = 100;
+RELAX_cfg.PopDetect_MinRiseFraction               = 0.5;
+RELAX_cfg.PopDetect_StepsPerMinuteToRejectChannel = 30;
+% Repair
+RELAX_cfg.PopRepair_MaxPolyOrder                  = 3;
+RELAX_cfg.PopRepair_MaxCutoffHz                   = 1.0;
+RELAX_cfg.PopRepair_MaxWindowSeconds              = 2.0;
+RELAX_cfg.PopRepair_DetrendThresh                 = 3;
+RELAX_cfg.PopRepair_DetrendIterations             = 3;
+
 % Reject electrodes whose recorded impedance says the contact was bad, before any
 % data-driven screen sees them. The impedance is written into EEG.chanlocs at import by
 % attach_mff_impedance (TMS_response_variability repo) and survives into these .set files;
