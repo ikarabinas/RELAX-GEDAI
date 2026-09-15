@@ -13,16 +13,29 @@
 %                       to attribute the spend in .spentBy.
 %   worstFirstLabels - cell array of channel labels, ordered WORST FIRST. When the budget
 %                       cannot cover the whole list it is truncated from the end, so the
-%                       channels sacrificed are the least-bad ones.
+%                       channels sacrificed are the least-bad ones. 'spend' truncates by
+%                       keeping a PREFIX of this list, so the caller is responsible for
+%                       the ordering; this function does not re-sort it.
 %
 % Outputs:
-%   fits - the prefix of worstFirstLabels the budget allows. Always a cell array, {} when
-%          nothing fits, so callers can pass it straight to pop_select without a type test.
+%   fits - the prefix of worstFirstLabels the budget allows. Always a cell array: a 1x0
+%          empty cell when nothing fits (not the 0x0 empty cell a bare {} literal would
+%          be), so callers can pass it straight to pop_select without a type test.
 %   EEG  - EEG with .RELAX.ChannelBudget updated.
 %
 % Call 'init' immediately after EEG.allchan = EEG.chanlocs in the wrapper: that line
 % records the reference montage the proportion is taken against, so the budget has to be
 % created against the same snapshot, before any screen has removed a channel.
+%
+% IMPORTANT - worst-first is a caller obligation, and RELAX_impedance_bad_channels does
+% NOT meet it: it selects the worst-N candidates internally but then sorts its return
+% value back into ascending channel-index order (see its 'badIdx = sort(badIdx);' before
+% building rejectLabels), so its output is channel-index order, not worst-first. Passing
+% that output to 'spend' for truncation would therefore keep the lowest-numbered channels
+% rather than the worst ones. The designed path is the other direction: pass the
+% remaining budget (maxRejectable - nSpent) to RELAX_impedance_bad_channels as its 4th
+% argument, maxRejectableCount, so it selects the worst N itself within the allowance;
+% 'spend' truncation is then unreachable for that screen.
 %
 % Screens that do NOT participate, deliberately:
 %   - the bridged-channel screen. A bridge is a physical short; a retained cluster member
