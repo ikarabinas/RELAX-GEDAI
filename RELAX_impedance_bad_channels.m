@@ -14,6 +14,10 @@
 %                   STRICTLY greater than this.
 %   maxProportion - Safety cap: at most floor(maxProportion*nChan) channels may be
 %                   rejected here. See below.
+%   maxRejectableCount - (optional) explicit cap in channels, overriding
+%                        floor(maxProportion*nChannels). Supplied by RELAX_channel_budget
+%                        so this screen spends only the shared budget's remainder. Omit
+%                        for the original single-screen behaviour.
 %
 % Outputs:
 %   rejectLabels - Column cell array of channel labels to reject, {} if none.
@@ -47,7 +51,15 @@
 % the data-driven screens downstream, which is a better failure mode than gutting
 % the montage on one bad impedance sweep.
 
-function [rejectLabels, info] = RELAX_impedance_bad_channels(chanlocs, maxKOhm, maxProportion)
+function [rejectLabels, info] = RELAX_impedance_bad_channels(chanlocs, maxKOhm, maxProportion, maxRejectableCount)
+
+    % Optional 4th argument: an explicit cap in channels, from the shared budget in
+    % RELAX_channel_budget. Overrides the internal floor(maxProportion*nChannels) so
+    % this screen spends only what earlier screens left. The 3-argument form is
+    % unchanged, which is what keeps the sibling wrappers byte-identical.
+    if nargin < 4
+        maxRejectableCount = [];
+    end
 
     nChannels = numel(chanlocs);
 
@@ -114,7 +126,11 @@ function [rejectLabels, info] = RELAX_impedance_bad_channels(chanlocs, maxKOhm, 
 
     % Cap: keep the worst, drop the rest of the list. Sorting by impedance descending
     % makes "worst" mean the highest measured impedance:
-    maxRejectable = floor(maxProportion * nChannels);
+    if isempty(maxRejectableCount)
+        maxRejectable = floor(maxProportion * nChannels);
+    else
+        maxRejectable = maxRejectableCount;
+    end
     if info.nOverThreshold > maxRejectable
         [~, worstFirst] = sort(impedances(badIdx), 'descend');
         badIdx = badIdx(worstFirst(1:maxRejectable));
