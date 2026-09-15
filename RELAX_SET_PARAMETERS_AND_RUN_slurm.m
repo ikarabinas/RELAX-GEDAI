@@ -356,7 +356,7 @@ RELAX_cfg.Do_MWF_Twice=0; % 1 = Perform the MWF cleaning a second time (1 for ye
 RELAX_cfg.Do_MWF_Thrice=0; % 1 = Perform the MWF cleaning a second time (1 for yes, 0 for no). I think cleaning drift in this is a good idea.
 RELAX_cfg.Perform_wICA_on_ICLabel=0; % 1 = Perform wICA on artifact components marked by ICLabel (1 for yes, 0 for no).
 RELAX_cfg.Perform_ICA_subtract=0; % 1 = Perform ICA subtract on artifact components marked by ICLabel (1 for yes, 0 for no) (non-optimal, intended to be optionally used separately to wICA rather than additionally)
-RELAX_cfg.ICA_method='amica';
+RELAX_cfg.ICA_method='picard';
 RELAX_cfg.n_ICA_comp='auto'; % Number of ICA components to use (only relevant for PICARD and AMICA)
 RELAX_cfg.Report_all_ICA_info='yes'; % set to yes to provide detailed report of ICLabel artifact information. Runs ~20s slower per file.
 RELAX_cfg.Clean_other_comps='no'; % set to yes to clean independent components other than blinks and muscle activity
@@ -461,7 +461,26 @@ RELAX_cfg.NotchFilterType='ZaplinePlus'; % set as 'Butterworth' to use Butterwor
 % ZaplinePlus works best on data sampled at 512Hz or below, consider downsampling if above this.
 RELAX_cfg.LineNoiseFrequency=[60]; % Frequencies for bandstop filter in order to address line noise (set to 60 in countries with 60Hz line noise, and 50 in countries with 50Hz line noise).
 
+% Restrict the recording to a predefined electrode montage before any cleaning. The
+% montage file lists one EGI net index per line (e.g. the 204-channel montage of
+% Vorderwulbecke et al. 2020); every net index not listed is deleted. Note the montage
+% file includes 257, the reference channel, which is deleted regardless because
+% RELAX_average_rereference assumes the reference is no longer in the data -- so the
+% 204-entry file yields 203 scalp channels. Set to '' to keep the full montage.
+% Channels deleted here are removed before the wrapper snapshots EEG.allchan, so they
+% are never interpolated back, unlike channels rejected later by the impedance, bridge,
+% or PREP screens. pop_select errors on a label absent from a recording, so this fails
+% loudly rather than silently if an input is not a full 257-channel EGI net.
+RELAX_cfg.MontageChannelsFile='/home/nga4004/TMS_response_variability/montage_204_egi_indices.txt';
 RELAX_cfg.ElectrodesToDelete={'E257'};  % Remove reference chan -- RELAX assumes it is no longer in data in RELAX_average_rereference
+if ~isempty(RELAX_cfg.MontageChannelsFile)
+    montage_idx=readmatrix(RELAX_cfg.MontageChannelsFile);
+    montage_idx=montage_idx(~isnan(montage_idx));
+    drop_idx=setdiff(1:257,montage_idx(:)');
+    RELAX_cfg.ElectrodesToDelete=[arrayfun(@(n) sprintf('E%d',n),drop_idx(:),'UniformOutput',false); RELAX_cfg.ElectrodesToDelete(:)];
+    fprintf('Montage subset: deleting %d of 257 channels, keeping %d.\n', ...
+        numel(RELAX_cfg.ElectrodesToDelete),257-numel(RELAX_cfg.ElectrodesToDelete));
+end
 % If your EEG recording includes non-scalp electrodes or electrodes that you want to delete before cleaning, you can set them to be deleted here. 
 % The RELAX cleaning pipeline does not need eye, heart, or mastoid electrodes for effective cleaning.
 
