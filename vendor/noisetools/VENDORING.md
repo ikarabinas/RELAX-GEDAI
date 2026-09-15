@@ -146,3 +146,39 @@ byte-identical to the source tree.
 | `nt_vecadd.m` | 42 | `fa4604fda3d4aa1e` |
 | `nt_vecmult.m` | 53 | `ad19b85d4b1e66bd` |
 | `nt_version.m` | 2 | `fa8eedf8e153bbe4` |
+
+## Name collision with vendor/zapline-plus
+
+Both vendored trees carry NoiseTools files, and seven names appear in both. Four of them
+are **not identical**:
+
+| name | vendor/noisetools vs vendor/zapline-plus |
+| --- | --- |
+| `nt_demean.m` | DIFFERS |
+| `nt_fold.m` | DIFFERS |
+| `nt_unfold.m` | DIFFERS |
+| `nt_version.m` | DIFFERS |
+| `nt_greetings.m` | identical |
+| `nt_vecadd.m` | identical |
+| `nt_vecmult.m` | identical |
+
+MATLAB resolves a bare name to whichever directory sits earlier on the path, so whichever
+of `RELAX_add_vendored_noisetools()` and `RELAX_add_vendored_zapline()` runs **last** wins
+for those seven names — each one prepends its own directory. `nt_detrend` itself exists
+only here, so it always resolves to this tree; but its dependencies `nt_demean`, `nt_fold`
+and `nt_unfold` do not, and those are three of the four that differ.
+
+`RELAX_SET_PARAMETERS_AND_RUN_slurm.m` therefore calls `RELAX_add_vendored_noisetools()`
+**after** `RELAX_add_vendored_zapline()`, and `RELAX_add_vendored_noisetools()` verifies
+that *every* file in this directory — not just `nt_detrend` — resolves here, so a
+regression in that ordering fails loudly at startup rather than silently changing
+`nt_detrend`'s numerics.
+
+Note this is a call-time check, not a permanent guarantee: anything that prepends
+`vendor/zapline-plus` to the path *after* that call (as `tests/run_all_tests` does, which
+is why a suite run prints two different NoiseTools banners) shadows these files again. That
+is currently harmless — `RELAX_repair_steps` only ever calls `nt_detrend` with a
+single-channel `Tx1` vector, and the two `nt_demean`/`nt_fold`/`nt_unfold` variants were
+verified to produce bit-identical output for that shape — but it is not guaranteed to stay
+harmless if the calling pattern changes. **When re-syncing either tree, re-check this
+table.**

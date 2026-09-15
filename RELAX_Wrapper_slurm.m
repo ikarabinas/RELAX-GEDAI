@@ -287,6 +287,13 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
             fprintf('Pop screen: %d step(s) on %d channel(s); %d common-mode bin(s).\n', ...
                 PopScreenInfo.nSteps, PopScreenInfo.nChannelsAffected, PopScreenInfo.nCommonModeSteps);
 
+            % Captured BEFORE the Population-A filter below prunes PopSteps, so this
+            % covariate shares its population with PopNSteps/PopNChannelsAffected
+            % (which come from PopScreenInfo, i.e. pre-rejection). Recording one
+            % covariate post-filter and its siblings pre-filter would make the set
+            % silently incomparable across files.
+            PopMedianStepAmplitudeAll = median(abs(PopSteps.amplitude));
+
             % Population A: chronically bad contacts. Repair is meaningless on a channel
             % with no stable baseline, so it is rejected rather than repaired. badChannels
             % arrives ordered worst-first, which is what the budget's truncation needs.
@@ -331,7 +338,10 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
             % tasks". Scalars and cells only: this struct is struct2table'd below.
             EEG.RELAXProcessingExtremeRejections.PopNSteps                = PopScreenInfo.nSteps;
             EEG.RELAXProcessingExtremeRejections.PopNChannelsAffected     = PopScreenInfo.nChannelsAffected;
-            EEG.RELAXProcessingExtremeRejections.PopMedianStepAmplitude   = median(abs(PopSteps.amplitude));
+            EEG.RELAXProcessingExtremeRejections.PopMedianStepAmplitude   = PopMedianStepAmplitudeAll;
+            % Steps actually handed to the repair, i.e. after Population-A channels
+            % were removed. Equal to PopMedianStepAmplitude when nothing was rejected.
+            EEG.RELAXProcessingExtremeRejections.PopMedianRepairedStepAmplitude = median(abs(PopSteps.amplitude));
             EEG.RELAXProcessingExtremeRejections.PopNChannelsRejected     = numel(PopChannelToReject);
             EEG.RELAXProcessingExtremeRejections.PopNCommonModeSteps      = PopScreenInfo.nCommonModeSteps;
             EEG.RELAXProcessingExtremeRejections.PopDegenerateChannelCount = numel(PopScreenInfo.degenerateChannels);
@@ -340,6 +350,10 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
                 EEG.RELAXProcessingExtremeRejections.PopFractionSamplesMeanOnly  = PopRepairInfo.fractionSamplesMeanOnly;
                 EEG.RELAXProcessingExtremeRejections.PopMedianLowFreqVarianceRemoved = median(PopRepairInfo.lowFreqVarianceRemoved);
                 EEG.RELAXProcessingExtremeRejections.PopNOrder3OA  = PopRepairInfo.treatmentCounts.order3oa;
+                % Order-specific OA counters only tell the whole story at the shipped
+                % MaxPolyOrder=3; this total stays correct if a rederivation pass lowers it.
+                EEG.RELAXProcessingExtremeRejections.PopNOrderOA   = PopRepairInfo.treatmentCounts.order3oa ...
+                    + PopRepairInfo.treatmentCounts.order2oa + PopRepairInfo.treatmentCounts.order1oa;
                 EEG.RELAXProcessingExtremeRejections.PopNOrder3    = PopRepairInfo.treatmentCounts.order3;
                 EEG.RELAXProcessingExtremeRejections.PopNOrder2    = PopRepairInfo.treatmentCounts.order2;
                 EEG.RELAXProcessingExtremeRejections.PopNOrder1    = PopRepairInfo.treatmentCounts.order1;

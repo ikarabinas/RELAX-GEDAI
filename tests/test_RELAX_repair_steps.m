@@ -82,6 +82,39 @@ function test_RELAX_repair_steps()
             cases{k,1}, cases{k,2}, jsonencode(infoK.treatmentCounts));
     end
 
+    % ---- 4a. overlap-add survives a MaxPolyOrder above the response table ----
+    % chooseOrder saturates at numel(C)=3, so gating overlap-add on the RAW configured
+    % MaxPolyOrder makes the equality unsatisfiable the moment MaxPolyOrder exceeds 3:
+    % every long sub-segment then silently collapses to a single global fit whose cutoff
+    % sits far below the 0.5 Hz floor the ladder guarantees. The gate must compare against
+    % the ACHIEVABLE ceiling, min(MaxPolyOrder, numel(C)). This test fails if that is
+    % reverted to `order == opt.MaxPolyOrder`.
+    for mpo = [3 4 5]
+        wOff = warning('off', 'RELAX_repair_steps:maxPolyOrderClamped');
+        cleanupW = onCleanup(@() warning(wOff));
+        [~, infoM] = RELAX_repair_steps(mkEEG(randn(1,n)*5), mkSteps([], []), ...
+            'MaxPolyOrder', mpo);
+        clear cleanupW
+        assert(infoM.treatmentCounts.order3oa > 0, ...
+            ['a 10 s stepless channel must use order-3 overlap-add at MaxPolyOrder=%d ' ...
+             '(the achievable ceiling is 3), counts were %s'], ...
+            mpo, jsonencode(infoM.treatmentCounts));
+        assert(infoM.treatmentCounts.order3 == 0, ...
+            ['MaxPolyOrder=%d must not fall back to a single global order-3 fit, ' ...
+             'counts were %s'], mpo, jsonencode(infoM.treatmentCounts));
+    end
+
+    % Lowering MaxPolyOrder must report the order ACTUALLY used, not a hardcoded order3oa.
+    wOff2 = warning('off', 'RELAX_repair_steps:maxPolyOrderClamped');
+    [~, infoM2] = RELAX_repair_steps(mkEEG(randn(1,n)*5), mkSteps([], []), 'MaxPolyOrder', 2);
+    warning(wOff2);
+    assert(infoM2.treatmentCounts.order2oa > 0, ...
+        'MaxPolyOrder=2 overlap-add must be counted as order2oa, counts were %s', ...
+        jsonencode(infoM2.treatmentCounts));
+    assert(infoM2.treatmentCounts.order3oa == 0, ...
+        'an order-2 overlap-add must NOT be reported as order3oa, counts were %s', ...
+        jsonencode(infoM2.treatmentCounts));
+
     % ---- 4b. ladder selection AT the exact documented rung boundaries ----
     % The shipped case table above (3.000/1.800/1.400/1.000/0.500 s) sits safely inside
     % each rung, so it never exercises an edge. C(n)*n/(2*T) and MaxCutoffHz are
@@ -104,7 +137,7 @@ function test_RELAX_repair_steps()
     % actually landing there - it only requires assert()ing an exact count, and that every
     % OTHER rung's count is exactly zero, that the test can no longer be fooled by a tail.
     edgeCases = { 2.000, 'order3'; 1.635, 'order3'; 1.240, 'order2'; 0.845, 'order1' };
-    tcFieldsAll = {'order3oa','order3','order2','order1','meanOnly','fallback'};
+    tcFieldsAll = {'order3oa','order2oa','order1oa','order3','order2','order1','meanOnly','fallback'};
     nSubSegsEdge = 5;
     for k = 1:size(edgeCases,1)
         segLen       = round(edgeCases{k,1} * srate);
@@ -180,7 +213,7 @@ function test_RELAX_repair_steps()
         'subSegmentsPerChannel must stay nbchan x 1 even on the failure path');
     assert(size(info10.lowFreqVarianceRemoved,1) == 2 && size(info10.lowFreqVarianceRemoved,2) == 1, ...
         'lowFreqVarianceRemoved must stay nbchan x 1 even on the failure path');
-    tcFields = {'order3oa','order3','order2','order1','meanOnly','fallback'};
+    tcFields = {'order3oa','order2oa','order1oa','order3','order2','order1','meanOnly','fallback'};
     for k = 1:numel(tcFields)
         assert(isfield(info10.treatmentCounts, tcFields{k}) && info10.treatmentCounts.(tcFields{k}) == 0, ...
             'treatmentCounts.%s must be present and zero on the failure path', tcFields{k});

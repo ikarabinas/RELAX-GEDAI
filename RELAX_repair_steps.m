@@ -38,9 +38,10 @@
 % Outputs:
 %   EEG  - same structure with .data repaired
 %   info - .available, .status, .params, .nChannelsRepaired, .nSubSegments,
-%          .subSegmentsPerChannel, .treatmentCounts (order3oa/order3/order2/order1/
-%          meanOnly/fallback), .minSubSegmentDuration, .medianSubSegmentDuration,
-%          .fractionSamplesMeanOnly, .lowFreqVarianceRemoved
+%          .subSegmentsPerChannel, .treatmentCounts (order3oa/order2oa/order1oa/
+%          order3/order2/order1/meanOnly/fallback; the *oa fields count overlap-add
+%          windowed fits and name the order actually used), .minSubSegmentDuration,
+%          .medianSubSegmentDuration, .fractionSamplesMeanOnly, .lowFreqVarianceRemoved
 %
 % TREATMENT LADDER. For a sub-segment of duration T, the largest order n <= MaxPolyOrder
 % satisfying c(n)*n/(2T) <= MaxCutoffHz is used, with c = [1.69 1.24 1.09] MEASURED for
@@ -78,7 +79,25 @@ function [EEG, info] = RELAX_repair_steps(EEG, steps, varargin)
 
     C = [1.69 1.24 1.09];   % measured f_3dB = C(n)*n/(2T); see the spec's response tables
 
-    counts = struct('order3oa', 0, 'order3', 0, 'order2', 0, 'order1', 0, ...
+    % chooseOrder can never return more than numel(C), so a MaxPolyOrder above that is
+    % not merely ignored - before this was guarded it silently disabled overlap-add
+    % entirely (the ceiling and the configured value stopped coinciding), collapsing
+    % every long sub-segment to a single global fit whose cutoff sits far below the
+    % 0.5 Hz floor the ladder is documented to guarantee. Say so rather than clamp
+    % quietly: the caller asked for a fit this file cannot deliver.
+    if opt.MaxPolyOrder > numel(C)
+        warning('RELAX_repair_steps:maxPolyOrderClamped', ...
+            ['MaxPolyOrder=%d exceeds the %d measured response coefficients in C, so the ' ...
+             'effective maximum order is %d. Extend C with a measured coefficient if a ' ...
+             'higher order is really wanted.'], opt.MaxPolyOrder, numel(C), numel(C));
+    end
+
+    % order1oa/order2oa exist so the overlap-add counter can name the order actually
+    % used. They stay zero in any shipped configuration (MaxPolyOrder=3), but a
+    % rederivation pass that lowers MaxPolyOrder would otherwise have its windowed
+    % sub-segments misreported as order-3.
+    counts = struct('order3oa', 0, 'order2oa', 0, 'order1oa', 0, ...
+                    'order3', 0, 'order2', 0, 'order1', 0, ...
                     'meanOnly', 0, 'fallback', 0);
     info = struct('available', false, 'status', '', 'params', opt, ...
                   'nChannelsRepaired', 0, 'nSubSegments', 0, ...
@@ -146,7 +165,12 @@ function [EEG, info] = RELAX_repair_steps(EEG, steps, varargin)
                 order = 0;
             end
 
-            useOverlapAdd = (order == opt.MaxPolyOrder) && (numel(x) > wsize) && (wsize > 0);
+            % Compare against the ACHIEVABLE ceiling, not the raw configured value.
+            % chooseOrder saturates at numel(C), so gating on opt.MaxPolyOrder alone
+            % makes this condition unsatisfiable whenever MaxPolyOrder exceeds numel(C),
+            % silently switching overlap-add off for every long sub-segment.
+            useOverlapAdd = (order == min(opt.MaxPolyOrder, numel(C))) ...
+                            && (numel(x) > wsize) && (wsize > 0);
 
             done = false;
             while ~done
@@ -160,7 +184,11 @@ function [EEG, info] = RELAX_repair_steps(EEG, steps, varargin)
                         if useOverlapAdd
                             y = nt_detrend(x, order, [], [], opt.DetrendThresh, ...
                                            opt.DetrendIterations, wsize);
-                            counts.order3oa = counts.order3oa + 1;
+                            % Name the order actually used. order is 1..numel(C) here:
+                            % the order==0 case is handled by the meanOnly branch above,
+                            % and chooseOrder cannot exceed numel(C).
+                            oaField = sprintf('order%doa', order);
+                            counts.(oaField) = counts.(oaField) + 1;
                         else
                             y = nt_detrend(x, order, [], [], opt.DetrendThresh, ...
                                            opt.DetrendIterations);
