@@ -333,7 +333,11 @@ RELAX_cfg.Perform_PREP_bad_channel_rejection=0; % 0 = skip PREP findNoisyChannel
 % each one into a multi-second bipolar excursion in BOTH time directions, so repair has to
 % happen before the filter sees it. See
 % docs/superpowers/specs/2026-09-14-pop-artifact-repair-design.md
-RELAX_cfg.Perform_pop_artifact_repair             = 1;
+% OFF: real-data validation on all 5 surveyed files failed at these shipped defaults
+% (11.8x-2190.3x more detected steps than the exploratory survey; the survey's cleanest
+% file came back with 248/257 channels flagged instead of 2/257). See
+% docs/superpowers/reports/2026-09-14-pop-repair-validation.md before re-enabling.
+RELAX_cfg.Perform_pop_artifact_repair             = 0;
 % Detector - the first four are FieldTrip ft_artifact_jump's own defaults
 RELAX_cfg.PopDetect_MedianFilterOrder             = 9;
 RELAX_cfg.PopDetect_ZThreshold                    = 20;

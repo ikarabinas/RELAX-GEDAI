@@ -9,6 +9,19 @@ Companion to `docs/superpowers/specs/2026-09-14-pop-artifact-repair-design.md`.
 `RELAX_cfg.Perform_pop_artifact_repair` stay OFF until the detector's thresholds are
 rederived against real data.** Every number below is measured, not modelled.
 
+**This is not hypothetical: the stage WAS enabled in the shipped entry point.**
+`RELAX_SET_PARAMETERS_AND_RUN_slurm.m:336` read `RELAX_cfg.Perform_pop_artifact_repair =
+1` on HEAD before this report — set that way by the Task 5 wiring commit — so running the
+pipeline as shipped executed the stage at exactly the defaults this report proves broken.
+This report's commit changes that line to `= 0` with a comment pointing back here; every
+`PopDetect_*`/`PopRepair_*` parameter line stays in place unchanged, so the stage is one
+flag away from being re-enabled once its thresholds are rederived (Section 3). **If you
+maintain your own copy of `RELAX_cfg`** (a script derived from this one, a notebook that
+sets the struct by hand, etc.), check it explicitly: omitting the field is safe — the
+wrapper's own absent-means-off guard at `RELAX_Wrapper_slurm.m:255-257` covers that case —
+but a copy that carries the old `= 1` forward is not, and this report's fix does not reach
+that copy.
+
 ## Reproducibility
 
 - SLURM job `19639307`, partition `sackler-cpu`, node `c6`, `COMPLETED`, exit `0:0`,
@@ -99,6 +112,15 @@ have generated at this volume.
 
 ## 3. Root cause: `ZThreshold`, and it is fixable — but only demonstrated on one file
 
+**The shipped defaults, stated explicitly, since naming them is what makes the fix
+obvious:** `RELAX_cfg.PopDetect_ZThreshold = 20` and
+`RELAX_cfg.PopDetect_MinAmplitudeMicrovolts = 10`. Both are FieldTrip `ft_artifact_jump`'s
+own defaults, carried over by design decision 2 as "well established and trivially
+defensible to reviewers" — a reasonable starting point for a detector never before run
+against this data, but not validated against it before shipping. The sweep below shows
+the gate needs to move roughly 10x, to `ZThreshold≈200`, before this data's own noise
+floor stops dominating the count.
+
 One-parameter-at-a-time sweep from shipped defaults, m159 only (`pop_sweep_m159.m`;
 survey for this file: 15,045 steps / 169 channels):
 
@@ -121,7 +143,10 @@ other single knob tested matches on both axes simultaneously.
 
 Mechanistically: `ZThreshold=20` is FieldTrip's `ft_artifact_jump` default, calibrated by
 convention where z=5-10 already flags an extreme outlier. On this data the per-channel
-MAD of the median-filtered derivative is tiny (a spot check on m155's channel E1: median
+MAD of the median-filtered derivative is tiny (a spot check on m155's channel E1, run
+ad hoc outside the three sbatch phases — `diag_m155.m`, not one of the saved-artifact
+figures elsewhere in this report, though its arithmetic is exactly
+`RELAX_detect_steps.m`'s own `med`/`mad`/`z` definitions applied by hand: median
 and MAD of `abs(diff(movmedian(x,9)))` both ≈2.06 uV, i.e. the derivative distribution is
 sharply peaked near a small, non-zero value — plausibly quantisation or continuous
 low-amplitude EMG/instrument noise riding under the EEG). At z=20 that peaked scale puts
@@ -151,6 +176,45 @@ pass must move `RefractoryMs`, `ZThreshold`, `MinAmplitudeMicrovolts` and
 `StepsPerMinuteToRejectChannel` together and re-validate the pair, not treat
 `StepsPerMinuteToRejectChannel=30` as fixed while the other three move.
 
+### Does `StepsPerMinuteToRejectChannel = 30` still sit in an empty gap on real data?
+
+The design justified 30/min by arguing the two populations are separated by "more than
+two orders of magnitude in per-channel rate," so the threshold "is not finely balanced."
+That claim was checked directly against the shipped defaults' own output: for each file,
+`stepRatePerMinute` was pulled from the saved `detect_*.mat`, restricted to channels with
+at least one detected step, and its distribution computed (percentiles by linear
+interpolation over the sorted per-channel rates —
+`/home/nga4004/.claude/jobs/91008025/tmp/rate_gap_check.m`, reading the same Phase 1
+artifacts as Sections 1-2, no new detection run):
+
+| file | channels w/ steps | min | p10 | p25 | median | p75 | max | channels in [20,50]/min |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| m159 | 184 | 0.12 | 34.37 | 57.55 | 89.67 | 167.44 | 358.91 | 24 (13%) |
+| m497 | 237 | 0.11 | 1.32 | 10.14 | 49.95 | 108.71 | 687.43 | 34 (14%) |
+| m208 | 198 | 5.56 | 102.29 | 168.56 | 248.27 | 282.82 | 546.00 | 10 (5%) |
+| m583 | 250 | 0.11 | 8.91 | 21.76 | 45.41 | 89.93 | 283.95 | 78 (31%) |
+| m155 | 248 | 153.21 | 606.61 | 624.58 | 647.70 | 683.86 | 889.80 | 0 (0%) |
+
+**No file shows an empty gap anywhere near 30/min.** On four of the five files (m159,
+m497, m208, m583) the [20,50]/min band is densely populated — from 5% up to 31% of every
+step-affected channel's rate falls inside it, and m583 alone puts nearly a third of its
+affected channels there. m155 is the exception, but not in the design's favour: every
+one of its 248 affected channels sits at 153/min or higher, so 30/min classifies literally
+all of them as bad contacts with no gap to speak of either side of the threshold — there
+is no low-rate population on this file at all at shipped defaults, which is the same
+over-detection problem from Section 1 restated as a rate histogram rather than a raw
+count. Across all five files, the two-population, wide-empty-gap structure the design
+built `StepsPerMinuteToRejectChannel=30` around is not present in this data at shipped
+detector settings. (This is consistent with, not separate from, Section 1: a detector
+that is 10x too sensitive turns what should be a handful of genuinely fast-popping
+channels into a continuum running from near-zero to several hundred per minute, and a
+single fixed-rate cutoff drawn through a continuum has no non-arbitrary place to sit.)
+This does not by itself say where 30 belongs once `ZThreshold` is corrected — that
+distribution has not been recomputed at the corrected settings — but it does mean 30
+cannot currently be defended as "sitting in an empty gap," and the coupling with
+`RefractoryMs` above means it should be re-derived alongside `ZThreshold`, not audited on
+its own.
+
 **Caveat, stated plainly: this sweep was run on m159 only.** It was not the most extreme
 file (m155 was, at 2190x) and it has not been re-run for m155, m208, m497, or m583.
 `ZThreshold≈200` is a promising starting point for a rederivation pass, not a validated
@@ -179,6 +243,17 @@ measurement is diluted by the detector's own false-positive rate from Section 1
 `ringingRawMedian`/`ringingRepairedMedian` are centred on ordinary data, not real pops —
 that pulls both the raw and repaired medians toward the step-free control and compresses
 the ratio toward 1.0 regardless of how well genuine pops are being handled.
+
+**Limitation:** the "step-free control" window itself is not guaranteed step-free.
+`validate_pop_repair.m` / `pop_repair_one.m` pick it as the same channel offset by
+roughly half the recording length, with no check that the offset window avoids *other*
+detected step sites on that channel. On a channel carrying hundreds of steps/min (routine
+at these settings per Section 1) the control window can itself straddle a detected step.
+This is a limitation of the measurement, not a caveat that weakens the "unresolved"
+conclusion above — a control window contaminated by steps would itself show elevated
+ringing, pulling `controlMedian` up and the ratio further toward 1.0, so if anything this
+reinforces rather than undermines the case that the measured ratios cannot be trusted as
+reassurance yet.
 
 **m155 is the tell.** It has essentially one real bad channel and the rest of its
 "1,390,837 steps" are near-certainly the detector's own noise (Section 1). Repair moved
@@ -242,11 +317,15 @@ covariates" section already capture this per file.
 ## Conclusions and recommendations, in order
 
 1. **The stage fails validation at its shipped defaults.** m155 alone is sufficient: the
-   survey's 2-bad-channel example returns 248/257 channels flagged. Do not enable
-   `RELAX_cfg.Perform_pop_artifact_repair=1` for real runs until thresholds are
-   rederived and re-validated on all five files (the shipped `RELAX_Wrapper_slurm.m`
-   already defaults this flag to 0 when absent from `RELAX_cfg`, so no config change is
-   required to keep it off — just don't turn it on).
+   survey's 2-bad-channel example returns 248/257 channels flagged. `RELAX_cfg.Perform_pop_artifact_repair`
+   was `= 1` in the shipped `RELAX_SET_PARAMETERS_AND_RUN_slurm.m` before this report —
+   i.e. real runs following that entry point unmodified were already executing the stage
+   at exactly the defaults measured broken above. This report's commit flips that line to
+   `= 0` with a comment pointing here; leave it off until thresholds are rederived and
+   re-validated on all five files. `RELAX_Wrapper_slurm.m`'s own absent-means-off guard
+   (`:255-257`) only protects a `RELAX_cfg` that never sets the field at all — it does not
+   help a copy of the entry point that still carries the old `= 1` forward, so check any
+   such copy explicitly rather than relying on the wrapper's default.
 2. **The cause is `ZThreshold`, and it is fixable, pending broader validation.**
    `ZThreshold≈200` reproduces the survey on m159 on both step count and channel count;
    `MinAmplitudeMicrovolts` needs independent rederivation (the 92 uV probe showed an
