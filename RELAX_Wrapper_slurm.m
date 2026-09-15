@@ -476,12 +476,15 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     end
     EEG.RELAXProcessingExtremeRejections.ImpedanceBasedChannelToReject={};
     if RELAX_cfg.Perform_impedance_bad_channel_rejection == 1
-        % Spends from the shared budget created at the top of this loop, so the pop,
-        % impedance and PREP screens cannot between them delete more of the montage than
+        % Spends from the shared budget created at the top of this loop, so the pop and
+        % impedance screens cannot between them delete more of the montage than
         % MaxProportionOfElectrodesThatCanBeDeleted allows. (Before the budget existed
-        % each screen independently capped itself at that proportion, so three screens
-        % could remove three times it.) RELAX_excluding_channels_and_epoching keeps its
-        % own later, independent cap - see RELAX_channel_budget.m for why.
+        % each screen independently capped itself at that proportion, so multiple screens
+        % could remove multiple times it.) PREP does NOT currently spend from this budget -
+        % if RELAX_cfg.Perform_PREP_bad_channel_rejection is enabled (0 by default here),
+        % total deletions across all three screens can still exceed
+        % MaxProportionOfElectrodesThatCanBeDeleted. RELAX_excluding_channels_and_epoching
+        % keeps its own later, independent cap - see RELAX_channel_budget.m for why.
         popBudget = EEG.RELAX.ChannelBudget;
         [ImpedanceBasedChannelToReject, ImpedanceScreenInfo] = RELAX_impedance_bad_channels( ...
             EEG.chanlocs, RELAX_cfg.MaxImpedanceKOhm, ...

@@ -141,8 +141,9 @@ A `[0.5, 1.0] Hz` bound on the effective cutoff pins `wsize` to roughly 1.7-3.0 
    can be made on evidence.
 8. **Population A escalates inside the stage** - marked bad, repair skipped, removed immediately via
    `pop_select`, exactly as the impedance and bridge screens do.
-9. **A shared running channel-rejection budget** across the pop, impedance and PREP screens, so the
-   three together cannot exceed `MaxProportionOfElectrodesThatCanBeDeleted` of the original montage.
+9. **A shared running channel-rejection budget** across the pop and impedance screens, so the two
+   together cannot exceed `MaxProportionOfElectrodesThatCanBeDeleted` of the original montage. PREP
+   does not currently spend from this budget (see below).
 10. **Reference pops measured, not specially handled.** Steps appearing simultaneously across a large
     fraction of channels are counted and reported; whether they need common-mode treatment is decided
     from that evidence later.
@@ -307,7 +308,13 @@ Initialised at `RELAX_Wrapper_slurm.m:238`, immediately after `EEG.allchan = EEG
 line records the reference montage the proportion is taken against, so the budget must be created
 against the same snapshot.
 
-Participating screens: **pop, impedance, PREP**. Two deliberate exclusions:
+Participating screens: **pop, impedance**. PREP does **not** currently spend from this budget -
+`RELAX_Wrapper_slurm.m` has no `RELAX_channel_budget(...,'spend','PREP',...)` call (the only `'PREP'`
+spend in the repo is a scenario in `tests/test_RELAX_channel_budget.m`). Consequence: if
+`RELAX_cfg.Perform_PREP_bad_channel_rejection` is enabled (it is 0 by default in the SLURM entry
+point), total deletions across all three screens can still exceed
+`MaxProportionOfElectrodesThatCanBeDeleted`, since PREP applies only its own independent cap. Wiring
+PREP into the shared budget is out of scope for this plan. Two further deliberate exclusions:
 
 - The **bridge screen stays uncapped**, as it is today. A bridge is a physical short; a retained
   cluster member holds a smeared mixture while its `chanlocs` entry claims a precise location, so
