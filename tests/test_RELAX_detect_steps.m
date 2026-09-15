@@ -74,6 +74,8 @@ function test_RELAX_detect_steps()
     [steps5, info5] = RELAX_detect_steps(mkEEG([flat; randn(1,n)*5]));
     assert(isempty(steps5.sample(steps5.channel == 1)), 'a flat channel must yield no steps');
     assert(ismember('E1', info5.degenerateChannels), 'flat channel must be listed as degenerate');
+    assert(size(info5.degenerateChannels,1) >= 1 && size(info5.degenerateChannels,2) == 1, ...
+        'info.degenerateChannels must be Nx1');
     assert(~any(isnan(steps5.z)), 'no NaN z-scores');
 
     % ---- 6. absolute amplitude floor suppresses a tiny step on a very quiet channel ----
@@ -115,13 +117,67 @@ function test_RELAX_detect_steps()
     assert(~ismember('E2', infoA.badChannels), 'the clean channel must not be flagged');
     assert(infoA.stepRatePerMinute(1) > 30, 'rate should exceed the threshold');
     assert(numel(infoA.badChannelReason) == numel(infoA.badChannels), 'one reason per bad channel');
+    assert(size(infoA.badChannels,1) >= 1 && size(infoA.badChannels,2) == 1, 'info.badChannels must be Nx1');
+    assert(size(infoA.badChannelReason,1) >= 1 && size(infoA.badChannelReason,2) == 1, ...
+        'info.badChannelReason must be Nx1');
+
+    % ---- 8b. Population A ordering: badChannels must be worst-first for N>=2 ----
+    % Three channels with distinct step rates (~198 / ~90 / ~60 steps/min). Channel-index
+    % order is E1,E2,E3, but rate order is E2 (highest) > E1 > E3 (lowest) - deliberately
+    % different, so a regression to channel-index order would fail this assertion.
+    countHigh = 33;  % 33 steps in 10 s = 198 steps/min -> E2
+    countMid  = 15;  % 15 steps in 10 s =  90 steps/min -> E1
+    countLow  = 10;  % 10 steps in 10 s =  60 steps/min -> E3
+
+    xOrdE1 = randn(1, n) * 5;
+    posMid = round(linspace(300, 9700, countMid));
+    for k = 1:numel(posMid)
+        xOrdE1(posMid(k):end) = xOrdE1(posMid(k):end) + 300 * (-1)^k;
+    end
+
+    xOrdE2 = randn(1, n) * 5;
+    posHigh = round(linspace(300, 9700, countHigh));
+    for k = 1:numel(posHigh)
+        xOrdE2(posHigh(k):end) = xOrdE2(posHigh(k):end) + 300 * (-1)^k;
+    end
+
+    xOrdE3 = randn(1, n) * 5;
+    posLow = round(linspace(300, 9700, countLow));
+    for k = 1:numel(posLow)
+        xOrdE3(posLow(k):end) = xOrdE3(posLow(k):end) + 300 * (-1)^k;
+    end
+
+    [~, infoOrd] = RELAX_detect_steps(mkEEG([xOrdE1; xOrdE2; xOrdE3]), ...
+        'StepsPerMinuteToRejectChannel', 30);
+    assert(numel(infoOrd.badChannels) == 3, ...
+        'expected all 3 channels flagged bad, got %d', numel(infoOrd.badChannels));
+    assert(isequal(infoOrd.badChannels, {'E2'; 'E1'; 'E3'}), ...
+        'badChannels must be worst-first by step rate (E2>E1>E3), got %s', ...
+        strjoin(infoOrd.badChannels, ','));
+    assert(size(infoOrd.badChannels,1) == 3 && size(infoOrd.badChannels,2) == 1, ...
+        'badChannels must be Nx1');
+    assert(size(infoOrd.badChannelReason,1) == 3 && size(infoOrd.badChannelReason,2) == 1, ...
+        'badChannelReason must be Nx1');
 
     % ---- 9. empty result has the right shape, not a bare [] ----
     [stepsE, infoE] = RELAX_detect_steps(mkEEG(zeros(2, n) + randn(2, n)*1e-9));
-    assert(isnumeric(stepsE.sample) && isempty(stepsE.sample) && size(stepsE.sample,2) <= 1, ...
-        'empty .sample must be a 0x1 numeric');
-    assert(iscell(stepsE.label), 'empty .label must still be a cell');
+    assert(isnumeric(stepsE.channel) && size(stepsE.channel,1)==0 && size(stepsE.channel,2)==1, ...
+        'empty .channel must be exactly 0x1 numeric, not a bare []');
+    assert(isnumeric(stepsE.sample) && size(stepsE.sample,1)==0 && size(stepsE.sample,2)==1, ...
+        'empty .sample must be exactly 0x1 numeric, not a bare []');
+    assert(isnumeric(stepsE.amplitude) && size(stepsE.amplitude,1)==0 && size(stepsE.amplitude,2)==1, ...
+        'empty .amplitude must be exactly 0x1 numeric, not a bare []');
+    assert(isnumeric(stepsE.z) && size(stepsE.z,1)==0 && size(stepsE.z,2)==1, ...
+        'empty .z must be exactly 0x1 numeric, not a bare []');
+    assert(iscell(stepsE.label) && size(stepsE.label,1)==0 && size(stepsE.label,2)==1, ...
+        'empty .label must be exactly 0x1 cell, not a bare {}');
     assert(infoE.nSteps == 0 && infoE.nChannelsAffected == 0, 'zero counts on an empty result');
+    assert(iscell(infoE.badChannels) && size(infoE.badChannels,1)==0 && size(infoE.badChannels,2)==1, ...
+        'empty info.badChannels must be exactly 0x1 cell, not a bare {}');
+    assert(iscell(infoE.badChannelReason) && size(infoE.badChannelReason,1)==0 && size(infoE.badChannelReason,2)==1, ...
+        'empty info.badChannelReason must be exactly 0x1 cell, not a bare {}');
+    assert(iscell(infoE.degenerateChannels) && size(infoE.degenerateChannels,1)==0 && size(infoE.degenerateChannels,2)==1, ...
+        'empty info.degenerateChannels must be exactly 0x1 cell, not a bare {}');
 
     % ---- 10. params are echoed so the saved struct is self-describing ----
     [~, infoP] = RELAX_detect_steps(mkEEG(randn(2,n)*5), 'ZThreshold', 33);

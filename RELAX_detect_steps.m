@@ -62,6 +62,25 @@
 % so the splice discontinuity at a boundary is never mistaken for a pop. The robust
 % z-scale, however, is computed per channel across the WHOLE recording: an 8 s segment is
 % too short for a stable scale estimate, and MAD is insensitive to the pops themselves.
+%
+% Limitations (reproduced, not fixed - see task-3 review):
+%   - A bump-and-revert transient (the level rises, then reverts) with a duration between
+%     roughly 50% and 150% of SustainMs (default 100 ms) is reported as TWO steps - the
+%     rise and the revert - rather than filtered out as a non-step transient. At the low
+%     end of that band (duration close to 50% of SustainMs) the sustain window for each
+%     edge is only half filled by the new level before it reverts again, so .amplitude for
+%     both edges is under-reported by roughly half (measured: a 500 uV, 50 ms bump against
+%     the 100 ms default SustainMs is reported as two ~250 uV steps rather than ~500 uV).
+%     This affects the reported .amplitude covariate only, not the repair: the repair
+%     (Task 4) partitions on .sample and never subtracts .amplitude.
+%   - A channel that is EXACTLY constant (e.g. a disconnected/dead channel whose samples
+%     are bit-for-bit identical) apart from one or a few genuine pops is classified as
+%     degenerate rather than having its pop(s) reported: with the vast majority of
+%     per-sample derivatives equal to zero, the median (and therefore the MAD) of the
+%     derivative distribution stays at zero and no z-score exists. This requires the
+%     baseline to be truly flat - a channel with any continuous noise floor, however
+%     small, still yields a nonzero MAD and its pop is detected normally. Such a channel
+%     appears in info.degenerateChannels and is therefore reported, not silently dropped.
 
 function [steps, info] = RELAX_detect_steps(EEG, varargin)
 
@@ -83,8 +102,8 @@ function [steps, info] = RELAX_detect_steps(EEG, varargin)
                    'nSteps', 0, 'nChannelsAffected', 0, ...
                    'stepsPerChannel', zeros(EEG.nbchan,1), ...
                    'stepRatePerMinute', zeros(EEG.nbchan,1), ...
-                   'badChannels', {{}}, 'badChannelReason', {{}}, ...
-                   'degenerateChannels', {{}}, ...
+                   'badChannels', {cell(0,1)}, 'badChannelReason', {cell(0,1)}, ...
+                   'degenerateChannels', {cell(0,1)}, ...
                    'nCommonModeSteps', 0, 'commonModeSamples', []);
 
     refractory = max(1, round(opt.RefractoryMs * EEG.srate / 1000));
@@ -169,7 +188,7 @@ function [steps, info] = RELAX_detect_steps(EEG, varargin)
         end
     end
 
-    info.degenerateChannels = degenerate;
+    info.degenerateChannels = reshape(degenerate, [], 1);
     info.available = true;
     info.status    = 'ok';
 
