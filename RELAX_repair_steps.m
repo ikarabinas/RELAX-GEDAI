@@ -212,8 +212,19 @@ function order = chooseOrder(T, C, maxOrder, maxCutoffHz)
 % Largest order n <= maxOrder whose measured -3 dB point stays at or below maxCutoffHz.
 % 0 means "no polynomial fits in this duration" - robust mean subtraction only.
     order = 0;
+    % C(n)*n/(2*T) and maxCutoffHz are independently-rounded floating-point values that
+    % need not cancel exactly even when the duration T is chosen to land exactly on a
+    % documented rung boundary: at T = 1.635 s, n = 3, C(3) = 1.09, the comparison
+    % evaluates to 1.0 + 1 ULP and fails a strict <=, silently dropping the sub-segment
+    % to order 2 even though the docstring table documents that boundary as order 3.
+    % A tolerance of a few ULPs of maxCutoffHz rescues exact-boundary cases without
+    % shifting any other rung (verified: this tolerance does not change the chosen order
+    % at any of the non-boundary durations exercised by the test suite). Do not replace
+    % this with a hardcoded absolute constant (e.g. 1e-9) - it must stay correct if
+    % MaxCutoffHz is configured far from 1.0.
+    tol = 4 * eps(maxCutoffHz);
     for n = 1:min(maxOrder, numel(C))
-        if C(n) * n / (2*T) <= maxCutoffHz
+        if C(n) * n / (2*T) <= maxCutoffHz + tol
             order = n;
         end
     end

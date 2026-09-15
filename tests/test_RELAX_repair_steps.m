@@ -82,6 +82,49 @@ function test_RELAX_repair_steps()
             cases{k,1}, cases{k,2}, jsonencode(infoK.treatmentCounts));
     end
 
+    % ---- 4b. ladder selection AT the exact documented rung boundaries ----
+    % The shipped case table above (3.000/1.800/1.400/1.000/0.500 s) sits safely inside
+    % each rung, so it never exercises an edge. C(n)*n/(2*T) and MaxCutoffHz are
+    % independently-rounded floating-point values that need not cancel exactly even when
+    % T is chosen to land exactly on a documented boundary - at T = 1.635 s, order 3, the
+    % raw comparison evaluates to 1.0 + 1 ULP and fails a strict <=, which would silently
+    % select order 2 at a duration the docstring documents as order 3. This block pins
+    % every rung's exact edge from the docstring table:
+    %   T = 2.000 s  -> order 3, single window (not overlap-add: wsize is 2.000 s too,
+    %                   and overlap-add requires numel(x) > wsize strictly)
+    %   T = 1.635 s  -> order 3, single window (THE case that was failing)
+    %   T = 1.240 s  -> order 2, single window
+    %   T = 0.845 s  -> order 1, single window
+    %
+    % The record length is sized to an EXACT multiple of segLen (rather than reusing the
+    % fixed n=10000 s record and tiling steps into it), so every sub-segment - including
+    % the last one - is exactly segLen samples long. A ragged tail sub-segment left over
+    % from an inexact tiling would land in whatever rung ITS OWN duration implies, and a
+    % mere ">0" count on the target rung cannot tell that apart from the boundary segments
+    % actually landing there - it only requires assert()ing an exact count, and that every
+    % OTHER rung's count is exactly zero, that the test can no longer be fooled by a tail.
+    edgeCases = { 2.000, 'order3'; 1.635, 'order3'; 1.240, 'order2'; 0.845, 'order1' };
+    tcFieldsAll = {'order3oa','order3','order2','order1','meanOnly','fallback'};
+    nSubSegsEdge = 5;
+    for k = 1:size(edgeCases,1)
+        segLen       = round(edgeCases{k,1} * srate);
+        nCaseSamples = nSubSegsEdge * segLen;              % exact multiple -> no tail
+        stepSamplesE = (1:nSubSegsEdge-1) * segLen + 1;
+        [~, infoE] = RELAX_repair_steps(mkEEG(randn(1, nCaseSamples) * 5), ...
+            mkSteps(ones(1, numel(stepSamplesE)), stepSamplesE));
+        assert(infoE.treatmentCounts.(edgeCases{k,2}) == nSubSegsEdge, ...
+            'a %.3f s sub-segment (exact rung boundary, no ragged tail) should use rung %s exactly %d times, counts were %s', ...
+            edgeCases{k,1}, edgeCases{k,2}, nSubSegsEdge, jsonencode(infoE.treatmentCounts));
+        for f = 1:numel(tcFieldsAll)
+            if ~strcmp(tcFieldsAll{f}, edgeCases{k,2})
+                assert(infoE.treatmentCounts.(tcFieldsAll{f}) == 0, ...
+                    'a %.3f s sub-segment should land ONLY on rung %s, but %s was %d (counts were %s)', ...
+                    edgeCases{k,1}, edgeCases{k,2}, tcFieldsAll{f}, ...
+                    infoE.treatmentCounts.(tcFieldsAll{f}), jsonencode(infoE.treatmentCounts));
+            end
+        end
+    end
+
     % ---- 5. NaN in a sub-segment takes the mean-only path without propagating ----
     xn = randn(1, n) * 5;
     xn(5000:5010) = NaN;
