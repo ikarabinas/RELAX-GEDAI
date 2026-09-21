@@ -3,6 +3,7 @@ function test_RELAX_flat_channels()
 % railed at a different constant per segment, or all-NaN. One varying segment is enough to
 % keep it.
 
+    rng(1);
     n = 1000;
     segments = [1 500; 501 n];
     data = zeros(5, n);
