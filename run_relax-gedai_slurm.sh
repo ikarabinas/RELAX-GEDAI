@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=relax-gedai
-#SBATCH --array=1-15%15
+#SBATCH --array=1-26
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=60G

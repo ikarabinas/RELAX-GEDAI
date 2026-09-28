@@ -79,16 +79,33 @@ function test_pwelch_segmented()
         'boundary-free data must match a plain full-window pwelch');
 
     % ---------------------------------------------------------------------
-    % 7. Known limitation, characterised deliberately: the window still
-    % collapses to the SHORTEST segment, so a short fragment at a chunk edge
-    % degrades the whole chunk's spectrum. Deferred - see the plan's "Deferred"
-    % section. Update this test when that is addressed.
+    % 7. A short fragment at a chunk edge no longer collapses the window: the
+    % default window is sized from the segments of at least 1 s (see section 5),
+    % so the grid stays as fine as the full segments allow. (Until 2026-09-18
+    % this section documented the opposite as a known, deferred limitation.)
     % ---------------------------------------------------------------------
     ragged  = [randn(50, nChan); one; one];
     rbounds = [51; 51 + segLen];
     [~, fRagged] = pwelch_segmented(ragged, [], [], [], fs, rbounds);
-    assert((fRagged(2) - fRagged(1)) > 0.5, ...
-        'documenting that a 50-sample fragment still collapses the window');
+    [~, fFull]   = pwelch_segmented(one, [], [], [], fs, []);
+    assert(abs((fRagged(2) - fRagged(1)) - (fFull(2) - fFull(1))) < 1e-12, ...
+        'a 50-sample fragment must not set the window (grid %.4g Hz vs %.4g Hz)', ...
+        fRagged(2) - fRagged(1), fFull(2) - fFull(1));
+
+    % ---------------------------------------------------------------------
+    % 5. A sub-window sliver between two boundaries (an excision that landed a
+    % sample away from a TMS boundary, m292 day 3) must neither size the window
+    % nor error: the window comes from the segments that are actually usable.
+    % ---------------------------------------------------------------------
+    sliver = [one; randn(1, nChan); one];
+    sliverBounds = [segLen + 1; segLen + 2];
+    [pxxS, ~] = pwelch_segmented(sliver, [], [], 8192, fs, sliverBounds);
+    relErr = max(abs(pxxS(:) - pxx1(:))) / max(pxx1(:));
+    assert(relErr < 1e-10, 'a 1-sample segment must be ignored (rel err %.4g)', relErr);
+    short = [one; randn(30, nChan); one];               % 0.12 s: too short to be useful
+    [pxxT, ~] = pwelch_segmented(short, [], [], 8192, fs, [segLen + 1; segLen + 31]);
+    relErr = max(abs(pxxT(:) - pxx1(:))) / max(pxx1(:));
+    assert(relErr < 1e-10, 'a segment shorter than 1 s must not set the window (rel err %.4g)', relErr);
 
     fprintf('test_pwelch_segmented: PASS\n');
 end

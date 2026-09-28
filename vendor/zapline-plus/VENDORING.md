@@ -66,6 +66,16 @@ To re-sync with a newer upstream, re-run the procedure in
   always find bins, independent of how short the data's inter-boundary segments
   are), instead of `[]`.
 
+## Change made after the electrode-pop stage's first production batch (2026-09-18)
+
+- `pwelch_segmented` sizes its default window from the segments that are at least
+  1 s long (or the longest segment when none is), instead of from the shortest
+  segment in the file. The pop stage's common-mode excision can leave a remnant of a
+  few samples next to an existing boundary (m292 day 3), and a 1-sample shortest
+  segment made `hanning(1)` the window for the whole file, which pwelch rejects
+  ("Window size must be larger than 1 sample"). Segments shorter than the window were
+  already skipped. Covered by `tests/test_pwelch_segmented.m` section 5.
+
 ## Changes made by the boundary-aligned-chunking plan
 
 (`docs/superpowers/plans/2026-09-10-boundary-aligned-zapline-chunking.md`, C8-C9 above)

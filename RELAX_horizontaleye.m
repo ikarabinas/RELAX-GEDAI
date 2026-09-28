@@ -48,10 +48,10 @@ function [continuousEEG] = RELAX_horizontaleye(continuousEEG, RELAX_cfg)
             RELAX_cfg.HorizontalEyeMovementFocus=400; % Buffer window, masking periods earlier and later than the time where horizontal eye movements start exceeding the threshold.
         end       
         if isfield(RELAX_cfg, 'HEOGLeftpattern')==0
-            RELAX_cfg.HEOGLeftpattern = ["AF7", "F7", "FT7", "F5", "T7", "FC5", "C5", "TP7", "AF3"]; % sets electrodes to use for horizontal eye movement detection in priority order (if the electrode in position 1 isn't present, the script will check for electrode in position 2, and so on...).
+            RELAX_cfg.HEOGLeftpattern = ["E46", "E54", "E61", "E47", "E69", "E55", "E63", "E70", "E38"]; % sets electrodes to use for horizontal eye movement detection in priority order (if the electrode in position 1 isn't present, the script will check for electrode in position 2, and so on...).
         end
         if isfield(RELAX_cfg, 'HEOGRightpattern')==0
-            RELAX_cfg.HEOGRightpattern = ["AF8", "F8","FT8","F6","T8", "FC6", "C6", "TP8", "AF4"]; % sets electrodes to use for horizontal eye movement detection in priority order (if the electrode in position 1 isn't present, the script will check for electrode in position 2, and so on...).
+            RELAX_cfg.HEOGRightpattern = ["E10", "E1", "E220", "E2", "E202", "E221", "E211", "E193", "E11"]; % sets electrodes to use for horizontal eye movement detection in priority order (if the electrode in position 1 isn't present, the script will check for electrode in position 2, and so on...).
         end
     elseif exist('RELAX_cfg', 'var')==0
         RELAX_cfg.OnlyIncludeTaskRelatedEpochs=0; % If this =1, the clean and artifact templates will only include data within 5 seconds of a task trigger, periods outside this will be marked as NaN.
@@ -61,8 +61,8 @@ function [continuousEEG] = RELAX_horizontaleye(continuousEEG, RELAX_cfg)
         RELAX_cfg.HorizontalEyeMovementTimepointsExceedingThreshold=25; % Datapoints exceeding horizontal threshold within the test period set below before marked as horizontal eye movement.
         RELAX_cfg.HorizontalEyeMovementTimepointsTestWindow=(2*RELAX_cfg.HorizontalEyeMovementTimepointsExceedingThreshold)-1; % Window duration to test for horizontal eye movement, set to 2x the value above by default.
         RELAX_cfg.HorizontalEyeMovementFocus=400; % Buffer window, masking periods earlier and later than the time where horizontal eye movements exceed the threshold.
-        RELAX_cfg.HEOGLeftpattern = ["AF7", "F7", "FT7", "F5", "T7", "FC5", "C5", "TP7", "AF3"];
-        RELAX_cfg.HEOGRightpattern = ["AF8", "F8","FT8","F6","T8", "FC6", "C6", "TP8", "AF4"]; 
+        RELAX_cfg.HEOGLeftpattern = ["E46", "E54", "E61", "E47", "E69", "E55", "E63", "E70", "E38"];
+        RELAX_cfg.HEOGRightpattern = ["E10", "E1", "E220", "E2", "E202", "E221", "E211", "E193", "E11"]; 
     end
     
 %% HORIZONTAL EYE MOVEMENT MARKING BY LATERAL ELECTRODES ON OPPOSITE SIDES OF THE HEAD SHOWING VALUES OF THE OPPOSITE POLARITY, BOTH LARGER THAN MEDIAN +/- X MAD:

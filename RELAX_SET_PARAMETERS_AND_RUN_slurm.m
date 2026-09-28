@@ -135,7 +135,7 @@ addpath('/home/nga4004/tools/eeglab2026.0.0/plugins/Fieldtrip-lite250523/');
 
 % fastica:
 % http://research.ics.aalto.fi/ica/fastica/code/dlcode.shtml 
-addpath('/home/imk2003/Documents/MATLAB/eeglab/plugins/FastICA_25/');
+%addpath('/home/imk2003/Documents/MATLAB/eeglab/plugins/FastICA_25/');
 
 % ICLabel in your eeglab folder as a plugin or via the github:
 % https://github.com/sccn/ICLabel
@@ -152,7 +152,7 @@ RELAX_add_vendored_noisetools();  % nt_detrend for RELAX_repair_steps, see vendo
 RELAX_cfg.caploc=[]; % path containing electrode positions. Set to =[] if electrode locations are already in your EEG file.
 
 % Specify the to be processed file locations:
-RELAX_cfg.myPath='/home/nga4004/TMS_response_variability/store/mdd_dlpfc/preprocessed_Aug26/tms_artifact_removed/';
+RELAX_cfg.myPath='/home/nga4004/TMS_response_variability/store/mdd_dlpfc/preprocessed_Sep26/rest_treat_joined/';
 
 % Specify whether all data is in a single folder or data are in BIDS format
 % (each EEG file within its own separate folder):
@@ -185,13 +185,13 @@ for f = 1:numel(allFilesRaw)
     participantIDsFull{f} = tok{1}{1};
 end
 
-if ~exist(participantListFile, 'file')
-    uniqueParticipants = unique(participantIDsFull, 'stable');
-    save(participantListFile, 'uniqueParticipants');
-else
-    loaded = load(participantListFile, 'uniqueParticipants');
-    uniqueParticipants = loaded.uniqueParticipants;
-end
+% The cache pins array index -> participant across concurrent tasks and across reruns.
+% Participants whose files arrived after the cache was written are appended at the
+% end (never re-sorted, so existing indices keep their meaning); widen --array in
+% run_relax-gedai_slurm.sh when the printed count grows. See RELAX_participant_list.
+uniqueParticipants = RELAX_participant_list(participantListFile, participantIDsFull);
+fprintf('Participant list (%d): %s\n', numel(uniqueParticipants), ...
+    strjoin(arrayfun(@(k) sprintf('%d=%s', k, uniqueParticipants{k}), 1:numel(uniqueParticipants), 'UniformOutput', false), ' '));
 
 task_id = str2double(getenv('SLURM_ARRAY_TASK_ID'));
 if isnan(task_id); task_id = 7; end
@@ -210,17 +210,20 @@ if strcmp(RELAX_cfg.all_data_in_1_folder_or_BIDS_format,'BIDS')
 end
 
 % Scope "skip already cleaned" to just this participant's files
-already_cleaned = dir(fullfile(RELAX_cfg.myPath, 'RELAXProcessed', 'Cleaned_Data', '*RELAX*.set'));
-already_cleaned_names = {already_cleaned.name};
-already_processed = false(size(RELAX_cfg.dirList));
-for f = 1:numel(RELAX_cfg.dirList)
-    [~, basename, ~] = fileparts(RELAX_cfg.dirList(f).name);
-    already_processed(f) = any(contains(already_cleaned_names, basename));
-end
-RELAX_cfg.dirList(already_processed) = [];
-RELAX_cfg.files(already_processed) = [];
-if strcmp(RELAX_cfg.all_data_in_1_folder_or_BIDS_format,'BIDS')
-    RELAX_cfg.folders = RELAX_cfg.folders(~already_processed);
+RELAX_cfg.OverwriteExistingCleanedFiles = 1; % 1 = reprocess and overwrite files even if a cleaned output already exists for them; 0 = skip files already in RELAXProcessed/Cleaned_Data (default, incremental reruns)
+if ~RELAX_cfg.OverwriteExistingCleanedFiles
+    already_cleaned = dir(fullfile(RELAX_cfg.myPath, 'RELAXProcessed', 'Cleaned_Data', '*RELAX*.set'));
+    already_cleaned_names = {already_cleaned.name};
+    already_processed = false(size(RELAX_cfg.dirList));
+    for f = 1:numel(RELAX_cfg.dirList)
+        [~, basename, ~] = fileparts(RELAX_cfg.dirList(f).name);
+        already_processed(f) = any(contains(already_cleaned_names, basename));
+    end
+    RELAX_cfg.dirList(already_processed) = [];
+    RELAX_cfg.files(already_processed) = [];
+    if strcmp(RELAX_cfg.all_data_in_1_folder_or_BIDS_format,'BIDS')
+        RELAX_cfg.folders = RELAX_cfg.folders(~already_processed);
+    end
 end
 
 RELAX_cfg.ParticipantTag = thisParticipant;
@@ -333,25 +336,77 @@ RELAX_cfg.Perform_PREP_bad_channel_rejection=0; % 0 = skip PREP findNoisyChannel
 % each one into a multi-second bipolar excursion in BOTH time directions, so repair has to
 % happen before the filter sees it. See
 % docs/superpowers/specs/2026-09-14-pop-artifact-repair-design.md
-% OFF: real-data validation on all 5 surveyed files failed at these shipped defaults
-% (11.8x-2190.3x more detected steps than the exploratory survey; the survey's cleanest
-% file came back with 248/257 channels flagged instead of 2/257). See
-% docs/superpowers/reports/2026-09-14-pop-repair-validation.md before re-enabling.
-RELAX_cfg.Perform_pop_artifact_repair             = 0;
-% Detector - the first four are FieldTrip ft_artifact_jump's own defaults
-RELAX_cfg.PopDetect_MedianFilterOrder             = 9;
-RELAX_cfg.PopDetect_ZThreshold                    = 20;
-RELAX_cfg.PopDetect_MinAmplitudeMicrovolts        = 10;
-RELAX_cfg.PopDetect_RefractoryMs                  = 20;
-RELAX_cfg.PopDetect_SustainMs                     = 100;
-RELAX_cfg.PopDetect_MinRiseFraction               = 0.5;
-RELAX_cfg.PopDetect_StepsPerMinuteToRejectChannel = 30;
-% Repair
+% ON since 2026-09-17: the two-window detector / transition-fill stage passed its real-data
+% checks on the surveyed files (validate_pop_repair.m; report in
+% docs/superpowers/reports/2026-09-17-pop-repair-validation.md). The previous derivative-
+% based detector had failed at its shipped defaults
+% (docs/superpowers/reports/2026-09-14-pop-repair-validation.md).
+RELAX_cfg.Perform_pop_artifact_repair             = 1;
+% Detector (median-slope gate, docs/superpowers/specs/2026-09-22-median-slope-gate-design.md):
+% a centred median over WindowMs is read across TransitionMs (an exact lag in samples), so it
+% scores how fast the level moves, not how far. A candidate needs that slope's excess over the
+% local baseline slope (SlopeBaselineMs) > ZThreshold x the local spread, AND > ChannelZThreshold
+% x the channel's own spread of the same statistic (this is what keeps slow 1/f drift out), AND
+% a level change of at least MinAmplitudeMicrovolts, then brackets the transition in one
+% pass (RefineTransition).
+RELAX_cfg.PopDetect_WindowMs                      = 151; % shipped 2026-09-23 slope-gate survey (docs/superpowers/reports/2026-09-23-slope-gate-survey.md, section 6)
+RELAX_cfg.PopDetect_TransitionMs                  = 4;
+RELAX_cfg.PopDetect_ZThreshold                    = 20;   % shipped 2026-09-23 slope-gate survey
+RELAX_cfg.PopDetect_ChannelZThreshold             = 35;   % shipped 2026-09-23 slope-gate survey
+RELAX_cfg.PopDetect_MinAmplitudeMicrovolts        = 15;
+RELAX_cfg.PopDetect_RefractoryMs                  = 10;   % same-sign candidate runs closer than this are one step
+RELAX_cfg.PopDetect_RefineTransition              = true; % single bracketing pass
+RELAX_cfg.PopDetect_SlopeBaselineMs               = 1000; % local window Dslope's own trend/spread is estimated over
+RELAX_cfg.PopDetect_SlopeNoiseFloorMicrovolts     = 0.1;
+RELAX_cfg.PopDetect_SlopeSpreadQuantile           = 0.85;  % quantile of |deviation|, scaled to sd units, used for the local and channel spreads
+% Chronically bad contacts are rejected (via the shared channel budget) rather than
+% repaired when EITHER of these binds: steps per minute, or fraction of samples inside a
+% transition. 6/min: each fill perturbs ~1 s of the channel after the highpass.
+RELAX_cfg.PopDetect_StepsPerMinuteToRejectChannel       = 6;
+RELAX_cfg.PopDetect_MaxTransitionFractionToRejectChannel = 0.02;
+% Steps chained by gaps of 10 ms or less (RELAX_detect_steps's CommonModeGapMs default) on
+% more than this fraction of channels (>= 2) form a common-mode event (head/cap movement):
+% by default its members are only flagged and left in place; setting
+% PopRepair_ExciseCommonMode cuts them out with a boundary event instead of filling them
+% channel by channel.
+RELAX_cfg.PopDetect_CommonModeChannelFraction     = 0.15;
+% Eye movements are left alone rather than repaired: an event is eye movement when two
+% of its channels are eye electrodes (one is enough for a common-mode event), one of
+% those has its mid-crossing inside RELAX's own blink mask, and no member exceeds the
+% amplitude ceiling (saccades and blinks stay well under 500 uV on this montage; a
+% larger step in the cluster marks it as pops). IncludeHEOG adds RELAX_horizontaleye's
+% mask to the blink mask - off because two same-sign pops a few tens of ms apart on the
+% HEOG pair satisfy its opposite-polarity test after the 1-25 Hz zero-phase bandpass, so
+% the pops generate the mask that exempts them (audit of the validation files, 2026-09-18).
+RELAX_cfg.PopEye_MaxAmplitudeMicrovolts           = 500;
+RELAX_cfg.PopEye_IncludeHEOG                      = 0;
+% Repair: each channel is detrended (nt_detrend ladder) in the sub-segments between its
+% transitions, then every transition is bridged between AnchorMs anchor windows plus the
+% spherical-spline estimate of the neighbours' detail ('spatial'; 'linear' = bridge only).
 RELAX_cfg.PopRepair_MaxPolyOrder                  = 3;
 RELAX_cfg.PopRepair_MaxCutoffHz                   = 1.0;
 RELAX_cfg.PopRepair_MaxWindowSeconds              = 2.0;
 RELAX_cfg.PopRepair_DetrendThresh                 = 3;
 RELAX_cfg.PopRepair_DetrendIterations             = 3;
+RELAX_cfg.PopRepair_AnchorMs                      = 3;
+RELAX_cfg.PopRepair_FillMethod                    = 'spatial';
+RELAX_cfg.PopRepair_MinBasisChannels              = 16;   % fewer usable neighbours than this -> linear bridge
+RELAX_cfg.PopRepair_ExciseCommonMode              = false;
+RELAX_cfg.PopRepair_MaxExciseMs                   = 300;  % longer common-mode events are left to extreme-period marking
+RELAX_cfg.PopRepair_MinSegmentSeconds             = 1.0;  % an excision is extended to a segment edge / merged with the next one rather than leave a shorter remnant (a sub-second remnant is orphaned by the epoching; a ~1-sample one crashed zapline)
+
+% Reference-electrode pops (a pop on Cz/E257 is the same step on every channel) are found
+% on the cross-channel median and subtracted from every channel before the per-channel
+% detector runs, so they stop being common-mode events. Requires
+% Perform_pop_artifact_repair = 1. Survey and decision:
+% docs/superpowers/reports/2026-09-21-reference-pop-survey.md. A candidate is kept only if
+% the per-channel level changes agree in sign on at least MinSignAgreement of channels and
+% their robust spread is at most MaxAmplitudeSpread of the median amplitude.
+RELAX_cfg.Perform_reference_pop_repair            = 0;    % set to 1 after Task 7 of the plan
+RELAX_cfg.RefPop_MinChannels                      = 8;
+RELAX_cfg.RefPop_MinAmplitudeMicrovolts           = 10;   % the median averages out per-channel noise, so it can go well below the per-channel floor; the survey found 13 more real pops (15-30 uV) at 10 than at 30
+RELAX_cfg.RefPop_MinSignAgreement                 = 0.9;
+RELAX_cfg.RefPop_MaxAmplitudeSpread               = 0.5;
 
 % Reject electrodes whose recorded impedance says the contact was bad, before any
 % data-driven screen sees them. The impedance is written into EEG.chanlocs at import by

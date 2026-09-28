@@ -42,22 +42,51 @@ function [continuousEEG, epochedEEG] = RELAX_blinks_IQR_method(continuousEEG, ep
         RespectBoundaries = 0;
     end
 
-    % Check that blink channels are still available after Noisy channels
+    % Check that blink channels are still available after earlier channel rejection.
+    % Fewer than two used to be a hard error, which ended the SLURM array task for the
+    % participant: the native extreme-value channel screen legitimately removed 6 of the 8
+    % frontal electrodes on m160 day 2, and the bridge screen all 8 on m396. Now: fall
+    % back to the row of electrodes one row higher on the net, and if that still leaves
+    % fewer than two, report no blinks through the same no-blink path used when a
+    % participant simply does not blink (IQRmethodDetectedBlinks = 0, all-zero mask).
+    % Either way the choice is recorded per file - a file cleaned without blink marking
+    % is cleaned differently, and the downstream model must be able to see that:
+    %   BlinkElectrodesUsed     number of electrodes the median was taken over
+    %   BlinkElectrodeFallback  0 = configured electrodes, 1 = backup row added, 2 = none
     available_channels = {continuousEEG.chanlocs.labels};
     available_blink_electrodes = intersect(RELAX_cfg.BlinkElectrodes, available_channels);
     fprintf('Blink electrodes available for IQR method: %s\n', strjoin(available_blink_electrodes, ', '));
+    BlinkElectrodeFallback = 0;
     if length(available_blink_electrodes) < 2
         % Backup blink electrodes (one row higher on EEG layout)
         backup_electrodes = {'E12'; 'E20'; 'E27'; 'E34'; 'E21'};
-        
-        error('Insufficient blink electrodes available. Only %d of the required blink electrodes are present in the data. At least 2 blink electrodes are required for IQR method.', length(available_blink_electrodes));
-        
-        % % Add backup electrodes to the original list
-        % RELAX_cfg.BlinkElectrodes = [RELAX_cfg.BlinkElectrodes; backup_electrodes];
-
-        % % Update the available blink electrodes list
-        % available_blink_electrodes = intersect(RELAX_cfg.BlinkElectrodes, available_channels);
-        % fprintf('Added backup blink-affected electrodes. Now available: %s\n', strjoin(available_blink_electrodes, ', '));
+        RELAX_cfg.BlinkElectrodes = [RELAX_cfg.BlinkElectrodes(:); backup_electrodes];
+        available_blink_electrodes = intersect(RELAX_cfg.BlinkElectrodes, available_channels);
+        if length(available_blink_electrodes) >= 2
+            BlinkElectrodeFallback = 1;
+            warning('RELAX_blinks_IQR_method:backupElectrodes', ...
+                ['Fewer than 2 of the configured blink electrodes are present; adding the backup ' ...
+                 'row (%s). Blink detection now uses: %s'], strjoin(backup_electrodes', ', '), ...
+                strjoin(available_blink_electrodes, ', '));
+        else
+            BlinkElectrodeFallback = 2;
+            warning('RELAX_blinks_IQR_method:insufficientElectrodes', ...
+                ['Only %d blink electrode(s) present even with the backup row; at least 2 are ' ...
+                 'needed for the IQR method. No blinks will be marked for this file.'], ...
+                length(available_blink_electrodes));
+        end
+    end
+    continuousEEG.RELAXProcessingExtremeRejections.BlinkElectrodesUsed = length(available_blink_electrodes) * (BlinkElectrodeFallback < 2);
+    continuousEEG.RELAXProcessingExtremeRejections.BlinkElectrodeFallback = BlinkElectrodeFallback;
+    epochedEEG.RELAXProcessingExtremeRejections.BlinkElectrodesUsed = continuousEEG.RELAXProcessingExtremeRejections.BlinkElectrodesUsed;
+    epochedEEG.RELAXProcessingExtremeRejections.BlinkElectrodeFallback = BlinkElectrodeFallback;
+    if BlinkElectrodeFallback == 2
+        continuousEEG.RELAXProcessing.Details.eyeblinkmask = zeros(1, continuousEEG.pnts);
+        continuousEEG.RELAX.IQRmethodDetectedBlinks = 0;
+        continuousEEG.RELAX.eyeblinkmask = continuousEEG.RELAXProcessing.Details.eyeblinkmask;
+        epochedEEG.RELAX.eyeblinkmask = continuousEEG.RELAX.eyeblinkmask;
+        epochedEEG.RELAX.IQRmethodDetectedBlinks = 0;
+        return
     end
 
     % Robust average re-reference EEG data for more reliable blink detection 

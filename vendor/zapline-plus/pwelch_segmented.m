@@ -26,7 +26,12 @@ function [pxx, f] = pwelch_segmented(data, window, noverlap, nfft, fs, boundarie
         else
             bounds_vec = boundaries(:)';
             segment_lengths = diff(unique(sort([1, bounds_vec, size(data, 1) + 1])));
-            max_win_length = max(1, min(segment_lengths));
+            % Size the window from the segments that can carry a spectrum. A remnant
+            % shorter than 1 s (an excision that landed next to another boundary) would
+            % otherwise set a useless - or, at 1 sample, invalid - window for the whole
+            % file; such segments are skipped below instead.
+            usable = segment_lengths(segment_lengths >= min(fs, max(segment_lengths)));
+            max_win_length = max(2, min(usable));
             window = hanning(max_win_length);
         end
     end

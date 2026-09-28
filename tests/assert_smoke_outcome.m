@@ -23,6 +23,37 @@ function assert_smoke_outcome(cleanedFile, fixtureFile)
         'cleaned file kept only %d of the fixture''s %d segments', ...
         size(outSegments,1), size(fixSegments,1));
 
+    % Pop stage (when it ran): the info structs and every scalar covariate must be present,
+    % and the repair must have stayed within its per-channel ceiling.
+    if isfield(OUT.RELAX, 'PopScreen')
+        assert(OUT.RELAX.PopScreen.available, 'pop screen reported unavailable: %s', OUT.RELAX.PopScreen.status);
+        X = OUT.RELAXProcessingExtremeRejections;
+        needed = {'PopNSteps','PopNChannelsAffected','PopNEvents','PopNChannelsRejected', ...
+                  'PopNChannelsRejectedByRate','PopNChannelsRejectedByFraction', ...
+                  'PopNChannelsRejectedByFlat','PopNEyeElectrodesProtected', ...
+                  'PopNCommonModeSteps','PopNCommonModeEvents', ...
+                  'PopNEyeMovementStepsSkipped','PopEyeMaskFraction','PopNIntervalsFilled', ...
+                  'PopFractionSamplesInterpolated','PopMaxChannelFractionInterpolated', ...
+                  'PopNFillsSpatial','PopNFillsLinear','PopNCommonModeExcised','PopExcisedSeconds'};
+        for k = 1:numel(needed)
+            assert(isfield(X, needed{k}), 'pop covariate %s missing', needed{k});
+            assert(isscalar(X.(needed{k})) && isnumeric(X.(needed{k})), 'pop covariate %s is not a numeric scalar', needed{k});
+        end
+        assert(OUT.RELAX.PopRepair.available, 'pop repair reported unavailable: %s', OUT.RELAX.PopRepair.status);
+        % Blink-electrode fallback covariates (RELAX_blinks_IQR_method) are always written,
+        % whether or not the fallback fired.
+        for k = {'BlinkElectrodesUsed','BlinkElectrodeFallback'}
+            assert(isfield(X, k{1}) && isscalar(X.(k{1})) && isnumeric(X.(k{1})), ...
+                'blink covariate %s missing or not a numeric scalar', k{1});
+        end
+        assert(any(X.BlinkElectrodeFallback == [0 1 2]), 'BlinkElectrodeFallback must be 0, 1 or 2');
+        assert(X.PopMaxChannelFractionInterpolated <= 0.05, ...
+            'a channel had %.1f%% of its samples interpolated', 100*X.PopMaxChannelFractionInterpolated);
+        fprintf('Pop stage: %d steps, %d filled (%d spatial), %d excised, %d eye-skipped, %d channels rejected.\n', ...
+            X.PopNSteps, X.PopNIntervalsFilled, X.PopNFillsSpatial, X.PopNCommonModeExcised, ...
+            X.PopNEyeMovementStepsSkipped, X.PopNChannelsRejected);
+    end
+
     assert(OUT.RELAX.Data_has_been_cleaned == 1, 'Data_has_been_cleaned must be 1');
     assert(~any(isnan(OUT.data(:))), 'cleaned data must contain no NaNs');
 

@@ -3,6 +3,11 @@ function run_integration_smoke()
 % boundary-related outcomes. Validates plumbing, not cleaning quality.
 
     fixtureDir = fullfile(fileparts(mfilename('fullpath')), 'fixtures');
+    % Same vendored-path setup the SET_PARAMETERS entry point does after eeglab():
+    % the vendored zapline-plus must shadow the EEGLAB plugin copy, and nt_detrend
+    % (RELAX_repair_steps) is only available from vendor/noisetools.
+    RELAX_add_vendored_zapline();
+    RELAX_add_vendored_noisetools();
     assert(exist(fullfile(fixtureDir,'boundary_fixture.set'),'file') == 2, ...
         'run make_boundary_fixture first');
 
@@ -20,6 +25,9 @@ function run_integration_smoke()
     RELAX_cfg.RespectBoundaries = 1;
     RELAX_cfg.Perform_PREP_bad_channel_rejection = 0;
     RELAX_cfg.ComputeSER_ARR = 0;
+    % Electrode-pop stage at its shipped defaults (on in the SET_PARAMETERS script since
+    % 2026-09-17; exercised here for plumbing - eye mask, spatial fill, excision path).
+    RELAX_cfg.Perform_pop_artifact_repair = 1;
 
     % Everything else copied from RELAX_SET_PARAMETERS_AND_RUN_slurm.m
     RELAX_cfg.Perform_targeted_wICA = 1;

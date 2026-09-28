@@ -11,9 +11,7 @@
 %                              computation (default 1; eBridge's own auto-range is
 %                              0.5-1.0 s)
 %     Filter                 - 1 = bandpass a working copy before computing ED, via
-%                              RELAX_filtbutter; 0 = use the data as-is (default 0).
-%                              Off by default: band limiting rescales every ED value,
-%                              and this screen normally runs on data already notched.
+%                              RELAX_filtbutter; 0 = use the data as-is (default 1).
 %     FiltLow, FiltHigh       - bandpass edges in Hz, used only if Filter=1 (default 0.5, 30)
 %     FiltOrder               - Butterworth order for the pre-ED bandpass (default 2)
 %     BCT                     - eBridge BCT: fraction of epochs below the ED cutoff
@@ -89,7 +87,7 @@ function [rejectLabels, info] = RELAX_bridged_channels(EEG, varargin)
     p = inputParser();
     p.KeepUnmatched = true;
     addParameter(p, 'EpochSec', 1);
-    addParameter(p, 'Filter', 0);
+    addParameter(p, 'Filter', 1);
     addParameter(p, 'FiltLow', 0.5);
     addParameter(p, 'FiltHigh', 30);
     addParameter(p, 'FiltOrder', 2);
