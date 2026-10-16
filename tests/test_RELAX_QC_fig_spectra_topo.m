@@ -11,6 +11,7 @@ function test_RELAX_QC_fig_spectra_topo()
 
     caption = RELAX_QC_fig_blink_topo(cache, outDir);
     assertSaved(outDir, 'fig5_blink_topography');
+    assert(contains(caption, "baseline-corrected") && contains(caption, "−500 to −300 ms"), 'states baseline: %s', caption);
     assert(contains(caption, "3 files") && contains(caption, "1 file with fewer than 5 blinks"), ...
            'f4 has 2 blinks and must be left out of the group row: %s', caption);
 
