@@ -15,7 +15,9 @@ function caption = RELAX_QC_fig_examples(cache, outDir)
         'most 20–80 Hz power. Blink and muscle columns: grey is the sample-matched data before wICA, blue is the ' ...
         'cleaned file, and the strip below is what wICA removed. Pop column: grey is the input file band-passed and ' ...
         'resampled without any pop repair, a display-only reconstruction rather than saved pipeline data, beside ' ...
-        'the pop-repaired data; the repaired interval is shaded. Dashed black lines are boundaries. Good cleaning: the ' ...
+        'the pop-repaired data; the repaired interval is shaded, widened to at least 50 ms so it can be seen. ' ...
+        'The reconstruction also band-stops the line harmonics rather than applying ZaplinePlus, so line-noise differences there are not pop repair. ' ...
+        'Traces and removed strips are clipped to fixed limits, the removed strips at 1.2 times the median per-channel peak (marked "clipped"). Dashed black lines are boundaries. Good cleaning: the ' ...
         'blink and burst are gone from blue while the background rhythm is unchanged, and the removed strip ' ...
         'carries only the artifact.\n'], numel(cache.examples)));
 
@@ -48,12 +50,16 @@ function caption = RELAX_QC_fig_examples(cache, outDir)
     end
 end
 
+function seconds = minimumShadeSeconds(), seconds = 0.05; end
+
+function microvolts = minimumRemovedLimit(), microvolts = 1; end
+
 function drawWindow(traceAx, removedAx, w, beforeName, afterName, style)
     before = w.before; after = w.after;
     centre = median(before, 2);
     spacing = max(8 * median(mad(before, 1, 2)), eps);
     offsets = (size(before, 1) - 1:-1:0)' * spacing;
-    yRange = [-spacing, max(offsets) + 3 * spacing];
+    yRange = [-1.5 * spacing, max(offsets) + 3 * spacing];
 
     hold(traceAx, 'on');
     shade(traceAx, w.shade, yRange, style);
@@ -64,21 +70,32 @@ function drawWindow(traceAx, removedAx, w, beforeName, afterName, style)
     yticks(traceAx, ticks); yticklabels(traceAx, w.channels(order));
     ylim(traceAx, yRange); xlim(traceAx, [w.t(1) w.t(end)]);
     traceAx.XTickLabel = []; traceAx.FontSize = style.fontSize; traceAx.TickLabelInterpreter = 'none';
-    legend(traceAx, [hBefore(1) hAfter(1)], {beforeName, afterName}, 'Location', 'northeast', 'Box', 'off', ...
-           'FontSize', style.fontSize - 1);
+    legend(traceAx, [hBefore(1) hAfter(1)], {beforeName, afterName}, 'Location', 'northoutside', ...
+           'Orientation', 'horizontal', 'Box', 'off', 'FontSize', style.fontSize - 1);
+    traceStacked = [before - centre + offsets; after - centre + offsets];
+    markClipped(traceAx, any(traceStacked(:) < yRange(1) | traceStacked(:) > yRange(2)), style);
 
     hold(removedAx, 'on');
-    removedRange = [min(w.removed, [], 'all'), max(w.removed, [], 'all')];
-    if ~(removedRange(2) > removedRange(1)), removedRange = [-1 1]; end
+    removedLimit = max(1.2 * median(max(abs(w.removed), [], 2)), minimumRemovedLimit());
+    removedRange = [-removedLimit removedLimit];
     shade(removedAx, w.shade, removedRange, style);
     plot(removedAx, w.t, w.removed', 'Color', [style.removed 0.6], 'LineWidth', style.thin);
     for b = w.boundaries, xline(removedAx, b, '--', 'Color', style.ink, 'LineWidth', 0.8); end
     xlim(removedAx, [w.t(1) w.t(end)]); ylim(removedAx, removedRange);
+    markClipped(removedAx, any(abs(w.removed(:)) > removedLimit), style);
     xlabel(removedAx, 'Time (s)'); ylabel(removedAx, 'Removed (\muV)'); removedAx.FontSize = style.fontSize;
+end
+
+function markClipped(ax, isClipped, style)
+    if ~isClipped, return, end
+    text(ax, 0.99, 0.02, 'clipped', 'Units', 'normalized', 'HorizontalAlignment', 'right', ...
+         'VerticalAlignment', 'bottom', 'Color', style.muted, 'FontSize', style.fontSize - 1, 'FontAngle', 'italic');
 end
 
 function shade(ax, interval, yRange, style)
     if isempty(interval), return, end
+    centre = mean(interval);
+    interval = centre + [-1 1] * max(diff(interval), minimumShadeSeconds()) / 2;
     patch(ax, interval([1 2 2 1]), yRange([1 1 2 2]), style.removed, 'FaceAlpha', 0.25, 'EdgeColor', style.removed, 'LineWidth', 0.5, ...
           'HandleVisibility', 'off');
 end

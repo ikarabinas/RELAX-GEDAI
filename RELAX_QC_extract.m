@@ -15,6 +15,9 @@ function cache = RELAX_QC_extract(opts)
     cellfun(@RELAX_QC_check_config, values(cfgs));
     if ~isempty(opts.onlyFiles)
         T = T(ismember(T.File, string(opts.onlyFiles)), :);
+        if isempty(T)
+            error('RELAX_QC:noFilesMatched', 'None of the requested files were found: %s', strjoin(string(opts.onlyFiles), ', '));
+        end
     end
     inputs = dir(fullfile(opts.myPath, '**', '*.set'));
     inputs = inputs(~contains({inputs.folder}, 'RELAXProcessed'));
