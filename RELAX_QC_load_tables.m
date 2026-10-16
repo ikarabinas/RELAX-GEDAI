@@ -16,12 +16,17 @@
 %          RELAX_unprocessed_files_<participant>.mat, else 'notProcessed'.
 %   cfgs - containers.Map, participant tag -> that participant's RELAX_cfg
 %
+% Cleaned_Data files whose base names are not in T warn (RELAX_QC:filesNotInTables); no
+% RELAX_cfg_*.mat at all is an error (RELAX_QC:noConfigs).
 % A missing per-participant file warns (RELAX_QC:missingStats) and leaves NaN/empty
 % values; an absent covariate column gives NaN, never 0.
 
 function [T, cfgs] = RELAX_QC_load_tables(statsDir, cleanedDir)
 
     cfgFiles = dir(fullfile(statsDir, 'RELAX_cfg_*.mat'));
+    if isempty(cfgFiles)
+        error('RELAX_QC:noConfigs', 'No RELAX_cfg_*.mat in %s; check myPath.', statsDir);
+    end
     cfgs = containers.Map();
     perParticipant = cell(numel(cfgFiles), 1);
 
@@ -88,6 +93,15 @@ function [T, cfgs] = RELAX_QC_load_tables(statsDir, cleanedDir)
         perParticipant{k} = R;
     end
     T = vertcat(perParticipant{:});
+    warnAboutCleanedFilesMissingFrom(T, cleanedDir);
+end
+
+function warnAboutCleanedFilesMissingFrom(T, cleanedDir)
+    onDisk = dir(fullfile(cleanedDir, '*_RELAX.set'));
+    missing = setdiff(string(regexprep({onDisk.name}, '_RELAX\.set$', '')), T.File);
+    if isempty(missing), return, end
+    warning('RELAX_QC:filesNotInTables', ['%d cleaned file(s) in %s are not in any RELAX_cfg.files (an incremental rerun saves only ' ...
+            'its own list), so they are left out; first: %s'], numel(missing), cleanedDir, strjoin(missing(1:min(3, end)), ', '));
 end
 
 function name = baseName(f)

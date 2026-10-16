@@ -69,7 +69,38 @@ function test_RELAX_QC_load_tables()
     assert(all(isnan(T.TableCleanedMuscleProportion(4:5))), 'non-cleaned rows carry no cleaned metrics');
     assert(isequal(sort(keys(cfgs)), {'m001', 'm002'}), 'one cfg per participant');
 
+    testWarnsAboutCleanedFilesMissingFromTables();
+    testNoConfigsRaisesClearError();
     fprintf('test_RELAX_QC_load_tables: PASS\n');
+end
+
+function testWarnsAboutCleanedFilesMissingFromTables()
+    root = tempname; statsDir = fullfile(root, 'stats'); cleanedDir = fullfile(root, 'cleaned');
+    mkdir(statsDir); mkdir(cleanedDir);
+    cleanup = onCleanup(@() rmdir(root, 's'));
+    RELAX_cfg = struct('files', {{'m001_day1.set'}}, 'DownSample_to_X_Hz', 500); %#ok<NASGU>
+    save(fullfile(statsDir, 'RELAX_cfg_m001.mat'), 'RELAX_cfg');
+    touch(fullfile(cleanedDir, 'm001_day1_RELAX.set'));
+    touch(fullfile(cleanedDir, 'm009_day1_RELAX.set'));
+    touch(fullfile(cleanedDir, 'm009_day2_RELAX.set'));
+
+    previous = warning('off', 'RELAX_QC:missingStats'); restore = onCleanup(@() warning(previous));
+    lastwarn('');
+    RELAX_QC_load_tables(statsDir, cleanedDir);
+    [message, warnId] = lastwarn();
+    assert(strcmp(warnId, 'RELAX_QC:filesNotInTables'), 'cleaned files absent from the tables should warn, got %s', warnId);
+    assert(contains(message, '2') && contains(message, 'm009_day1'), 'names the count and first files: %s', message);
+end
+
+function testNoConfigsRaisesClearError()
+    root = tempname; statsDir = fullfile(root, 'stats'); mkdir(statsDir);
+    cleanup = onCleanup(@() rmdir(root, 's'));
+    try
+        RELAX_QC_load_tables(statsDir, fullfile(root, 'cleaned'));
+        error('test:noError', 'expected RELAX_QC:noConfigs');
+    catch err
+        assert(strcmp(err.identifier, 'RELAX_QC:noConfigs') && contains(err.message, statsDir), 'got %s: %s', err.identifier, err.message);
+    end
 end
 
 function touch(f)
