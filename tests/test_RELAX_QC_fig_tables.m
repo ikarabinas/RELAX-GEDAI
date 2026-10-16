@@ -14,6 +14,7 @@ function test_RELAX_QC_fig_tables()
     assertSaved(outDir, 'fig4_data_taken');
     assert(contains(caption, "6 files shown"), '4 ok + 1 skipped + 1 excluded, not the notProcessed one: %s', caption);
     assert(contains(caption, "1 excluded"), 'counts exclusions: %s', caption);
+    assert(contains(caption, "4 cleaned, 1 skipped, 1 excluded, 0 errored"), 'skipped file is not counted as cleaned: %s', caption);
     assert(contains(caption, "rejection budget") && contains(caption, "25%"), 'states budget: %s', caption);
 
     assert(contains(caption, "share of all ICs"), 'artifact-IC marker described as share of all ICs: %s', caption);
