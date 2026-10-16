@@ -23,6 +23,7 @@ function cache = RELAX_QC_extract(opts)
     inputs = inputs(~contains({inputs.folder}, 'RELAXProcessed'));
 
     n = height(T);
+    checkpointEvery = 10;
     summaries = repmat(RELAX_QC_empty_summary(), n, 1);
     for i = 1:n
         if T.Outcome(i) ~= "cleaned", continue, end
@@ -34,6 +35,9 @@ function cache = RELAX_QC_extract(opts)
             warning('RELAX_QC:fileSkipped', '%s skipped: %s', T.File(i), err.message);
         end
         fprintf('RELAX_QC_extract %d/%d %s: %s %s\n', i, n, T.File(i), summaries(i).status, summaries(i).skipReason);
+        if mod(i, checkpointEvery) == 0 && i < n
+            saveCache(opts, cfgs, T, summaries, emptyPicks(), emptyExamples(), true);
+        end
     end
 
     unusable = [summaries.status] ~= "ok";
@@ -43,29 +47,44 @@ function cache = RELAX_QC_extract(opts)
     scores.blinkAmplitude(unusable) = NaN; scores.musclePower(unusable) = NaN; scores.popSteps(unusable) = NaN;
     picks = RELAX_QC_pick_examples(T.File, scores, opts.overrides);
 
-    examples = struct('file', {}, 'role', {}, 'windows', {});
+    saveCache(opts, cfgs, T, summaries, picks, emptyExamples(), true);
+
+    examples = emptyExamples();
     for k = 1:numel(picks)
         i = find(T.File == picks(k).file, 1);
         if summaries(i).status ~= "ok"
             warning('RELAX_QC:exampleUnavailable', 'Example %s has status %s; not shown.', picks(k).file, summaries(i).status);
             continue
         end
-        windows = RELAX_QC_example_windows(picks(k), summaries(i), filePaths(processed, inputs, T.File(i)), ...
-                                           cfgs(char(T.Participant(i))), opts);
+        windows = RELAX_QC_try_example_windows(picks(k), summaries(i), filePaths(processed, inputs, T.File(i)), ...
+                                               cfgs(char(T.Participant(i))), opts);
         examples(end+1) = struct('file', picks(k).file, 'role', picks(k).role, 'windows', windows); %#ok<AGROW>
     end
 
+    saveCache(opts, cfgs, T, summaries, picks, examples, false);
+    fprintf('RELAX_QC_extract: %d ok, %d skipped, cache %s\n', sum(~unusable), sum([summaries.status] == "skipped"), opts.cachePath);
+end
+
+function examples = emptyExamples()
+    examples = struct('file', {}, 'role', {}, 'windows', {});
+end
+
+function picks = emptyPicks()
+    picks = struct('file', {}, 'role', {}, 'centres', {});
+end
+
+% meta.partial marks a checkpoint: the draw stage warns and draws what the cache holds.
+function saveCache(opts, cfgs, T, summaries, picks, examples, partial)
     anyCfg = cfgs(char(T.Participant(1)));
     cache.meta = struct('created', datetime('now'), 'myPath', string(opts.myPath), 'opts', opts, ...
                         'muscleSlopeThreshold', anyCfg.MuscleSlopeThreshold, ...
                         'maxChannelProportion', anyCfg.MaxProportionOfElectrodesThatCanBeDeleted, ...
-                        'minBlinksForGroup', opts.minBlinksForGroup);
+                        'minBlinksForGroup', opts.minBlinksForGroup, 'partial', partial);
     cache.tables = T;
     cache.summaries = summaries;
     cache.picks = picks;
     cache.examples = examples;
     save(opts.cachePath, 'cache', '-v7.3');
-    fprintf('RELAX_QC_extract: %d ok, %d skipped, cache %s\n', sum(~unusable), sum([summaries.status] == "skipped"), opts.cachePath);
 end
 
 function paths = filePaths(processed, inputs, file)

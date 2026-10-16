@@ -38,6 +38,7 @@ end
 function drawAll(opts, outDir)
     loaded = load(opts.cachePath, 'cache');
     cache = loaded.cache;
+    RELAX_QC_warn_if_partial(cache, opts.cachePath);
     if RELAX_QC_cache_is_stale(cache, fullfile(opts.myPath, 'RELAXProcessed', 'Cleaned_Data'))
         warning('RELAX_QC:staleCache', 'Cleaned_Data has files newer than %s; rerun the extract stage.', opts.cachePath);
     end
@@ -49,12 +50,7 @@ function drawAll(opts, outDir)
 end
 
 function writeCaptions(cache, captions, cachePath, outDir)
-    isSkipped = [cache.summaries.status]' == "skipped";
-    skippedFiles = string(cache.tables.File(isSkipped));
-    reasons = [cache.summaries(isSkipped).skipReason]';
-    footer = sprintf('_Generated %s from %s. %d file(s) skipped:_ %s\n', string(datetime('now')), ...
-                     cachePath, nnz(isSkipped), strjoin(skippedFiles + " (" + reasons + ")", '; '));
     fid = fopen(fullfile(outDir, 'captions.md'), 'w');
-    fprintf(fid, '%s\n', strjoin([captions(:); footer], newline));
+    fprintf(fid, '%s\n', strjoin([captions(:); RELAX_QC_captions_footer(cache, cachePath)], newline));
     fclose(fid);
 end
