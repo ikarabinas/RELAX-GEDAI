@@ -1,0 +1,116 @@
+% RELAX_QC_file_summary() - Stage-1 QC summary of one cleaned file.
+%
+% Usage:
+%   >> summary = RELAX_QC_file_summary(paths, cfg, opts);
+%
+% Inputs:
+%   paths - .input, .extremes, .cleaned: full paths of the input, Extremes_Rejected and
+%           cleaned .set files
+%   cfg   - that participant's saved RELAX_cfg
+%   opts  - .windowSeconds, .maxHz, .blinkHalfSeconds, .topoHalfSeconds,
+%           .muscleWindowSeconds (see RELAX_QC_figures)
+%
+% A file whose rebuilt baseline does not align with its cleaned file comes back with
+% status "skipped" and the reason; everything aligned-only is left empty.
+
+function summary = RELAX_QC_file_summary(paths, cfg, opts)
+
+    summary = RELAX_QC_empty_summary();
+    extremesEEG = pop_loadset('filename', paths.extremes);
+    cleanedEEG  = pop_loadset('filename', paths.cleaned);
+    [baseline, info] = RELAX_QC_baseline(extremesEEG, cleanedEEG);
+    if ~info.aligned
+        summary.status = "skipped";
+        summary.skipReason = info.reason;
+        return
+    end
+
+    srate = cleanedEEG.srate;
+    labels = {cleanedEEG.chanlocs.labels};
+    segments = RELAX_get_segments(cleanedEEG);
+    summary.durationSeconds = cleanedEEG.pnts / srate;
+    summary.nChannels = cleanedEEG.nbchan;
+    summary.chanlocs = cleanedEEG.chanlocs;
+
+    removedData = double(baseline.data) - double(cleanedEEG.data);
+    [summary.freqs, p] = RELAX_QC_segment_psd(baseline.data, srate, segments, opts.windowSeconds, opts.maxHz);
+    summary.psdBaseline = mean(p, 1);
+    [~, p] = RELAX_QC_segment_psd(cleanedEEG.data, srate, segments, opts.windowSeconds, opts.maxHz);
+    summary.psdCleaned = mean(p, 1);
+    [~, p] = RELAX_QC_segment_psd(removedData, srate, segments, opts.windowSeconds, opts.maxHz);
+    summary.psdRemoved = mean(p, 1);
+    summary.varianceRemovedFraction = sum(var(removedData, 0, 2)) / sum(var(double(baseline.data), 0, 2));
+
+    inputEEG = pop_loadset('filename', paths.input);
+    summary.inputSrate = inputEEG.srate;
+    inputEEG = pop_select(inputEEG, 'channel', intersect({inputEEG.chanlocs.labels}, labels, 'stable'));
+    [inputFreqs, p] = RELAX_QC_segment_psd(inputEEG.data, inputEEG.srate, RELAX_get_segments(inputEEG), ...
+                                           opts.windowSeconds, opts.maxHz);
+    summary.psdInput = interp1(inputFreqs, mean(p, 1), summary.freqs);
+    clear inputEEG
+
+    summary = addBlinks(summary, baseline, cleanedEEG, removedData, cfg.BlinkElectrodes, opts);
+    clear removedData
+
+    [trace, channelPower] = RELAX_QC_muscle_trace(baseline, opts.muscleWindowSeconds);
+    [summary.scores.musclePower, peak] = max(trace);
+    summary.centres.muscle = (peak - 1) / srate;
+    channelPower(ismember(labels, cfg.BlinkElectrodes)) = -Inf;
+    [~, loudest] = sort(channelPower, 'descend');
+    summary.muscleChannels = labels(loudest(1:2));
+
+    summary = addPop(summary, extremesEEG);
+
+    summary.metricsBaseline = RELAX_QC_artifact_metrics(baseline, cfg, cfg.BlinkElectrodes);
+    summary.metricsCleaned  = RELAX_QC_artifact_metrics(cleanedEEG, cfg, cfg.BlinkElectrodes);
+    summary.status = "ok";
+end
+
+function summary = addBlinks(summary, baseline, cleanedEEG, removedData, blinkLabels, opts)
+    srate = cleanedEEG.srate;
+    half = round(opts.blinkHalfSeconds * srate);
+    peaks = RELAX_QC_blink_peaks(cleanedEEG, half);
+    summary.blinkN = numel(peaks);
+    summary.blinkTimes = (-half:half) / srate;
+    if isempty(peaks), return, end
+
+    blinkRows = ismember({cleanedEEG.chanlocs.labels}, blinkLabels);
+    [b, c, r] = deal(zeros(cleanedEEG.nbchan, 2 * half + 1));
+    for p = peaks
+        span = p - half : p + half;
+        b = b + double(baseline.data(:, span));
+        c = c + double(cleanedEEG.data(:, span));
+        r = r + removedData(:, span);
+    end
+    preBlink = summary.blinkTimes <= -0.3;
+    b = b / numel(peaks); b = b - mean(b(:, preBlink), 2);
+    c = c / numel(peaks); c = c - mean(c(:, preBlink), 2);
+    r = r / numel(peaks); r = r - mean(r(:, preBlink), 2);
+    atPeak = abs(summary.blinkTimes) <= opts.topoHalfSeconds;
+    summary.blinkErpBaseline = mean(b(blinkRows, :), 1);
+    summary.blinkErpCleaned  = mean(c(blinkRows, :), 1);
+    summary.blinkErpRemoved  = mean(r(blinkRows, :), 1);
+    summary.topoBaseline = mean(b(:, atPeak), 2);
+    summary.topoCleaned  = mean(c(:, atPeak), 2);
+    summary.topoRemoved  = mean(r(:, atPeak), 2);
+
+    [summary.scores.blinkAmplitude, biggest] = max(mean(abs(double(baseline.data(blinkRows, peaks))), 1));
+    summary.centres.blink = (peaks(biggest) - 1) / srate;
+end
+
+function summary = addPop(summary, extremesEEG)
+    if ~isfield(extremesEEG.RELAX, 'PopScreen') || ~isfield(extremesEEG.RELAX.PopScreen, 'steps'), return, end
+    steps = extremesEEG.RELAX.PopScreen.steps;
+    if istable(steps), steps = table2struct(steps, 'ToScalar', true); end
+    summary.scores.popSteps = numel(steps.sample);
+    own = ~steps.commonMode(:) & ismember(steps.label(:), {extremesEEG.chanlocs.labels});
+    if isfield(steps, 'eyeMovement'), own = own & ~steps.eyeMovement(:); end
+    if ~any(own), return, end
+    amplitude = abs(steps.amplitude(:));
+    amplitude(~own) = -Inf;
+    [~, i] = max(amplitude);
+    % Pop steps are detected before resampling, at the input file's rate:
+    summary.pop = struct('label', string(steps.label{i}), ...
+                         'centreSeconds', (steps.sample(i) - 1) / summary.inputSrate, ...
+                         'shadeSeconds', ([steps.onset(i), steps.offset(i)] - 1) / summary.inputSrate);
+end

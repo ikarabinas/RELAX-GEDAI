@@ -1,0 +1,40 @@
+% RELAX_QC_figures() - Artifact-removal QC figure set for a RELAX_Wrapper_slurm.m run.
+%                      Design: docs/superpowers/specs/2026-10-15-qc-figures-design.md
+%
+% Usage:
+%   >> RELAX_QC_figures('extract')   % stage 1, slow: submit with sbatch run_RELAX_QC_figures.sh extract
+%   >> RELAX_QC_figures('draw')      % stage 2, fast: redraw every figure from the cache
+%   >> RELAX_QC_figures('all')       % both
+%   >> RELAX_QC_figures('extract', {'m144_dlpfc_day1_stitched'})   % trial on a few files
+%
+% Edit myPath and overrides below for a different dataset or hand-picked examples.
+
+function RELAX_QC_figures(stage, onlyFiles)
+
+    myPath = '/home/nga4004/TMS_response_variability/store/mdd_dlpfc/preprocessed_Oct26/rest_treat_joined/';
+    % Hand-picked Figure 1 examples, replacing the automatic choice when non-empty, e.g.
+    %   struct('file', {'m144_dlpfc_day1_stitched'}, 'kind', {'blink'}, 'centreSeconds', {412.3})
+    % centreSeconds NaN keeps the automatic centre for that kind.
+    overrides = struct('file', {}, 'kind', {}, 'centreSeconds', {});
+
+    if nargin < 1, stage = 'all'; end
+    if nargin < 2, onlyFiles = {}; end
+
+    outDir = fullfile(myPath, 'RELAXProcessed', 'QC_figures');
+    if ~isfolder(outDir), mkdir(outDir); end
+    opts = struct('myPath', myPath, 'cachePath', fullfile(outDir, 'qc_cache.mat'), ...
+                  'overrides', overrides, 'onlyFiles', {onlyFiles}, ...
+                  'windowSeconds', 2, 'maxHz', 80, 'blinkHalfSeconds', 0.5, 'topoHalfSeconds', 0.05, ...
+                  'muscleWindowSeconds', 2, 'exampleSeconds', 6, 'minBlinksForGroup', 5);
+
+    if any(strcmp(stage, {'extract', 'all'}))
+        RELAX_QC_extract(opts);
+    end
+    if any(strcmp(stage, {'draw', 'all'}))
+        drawAll(opts, outDir);
+    end
+end
+
+function drawAll(opts, outDir) %#ok<INUSD>
+    error('RELAX_QC:notYet', 'The draw stage is added in Task 9 of the plan.');
+end
