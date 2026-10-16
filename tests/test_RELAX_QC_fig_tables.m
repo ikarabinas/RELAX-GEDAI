@@ -16,6 +16,16 @@ function test_RELAX_QC_fig_tables()
     assert(contains(caption, "1 excluded"), 'counts exclusions: %s', caption);
     assert(contains(caption, "rejection budget") && contains(caption, "25%"), 'states budget: %s', caption);
 
+    assert(contains(caption, "share of all ICs"), 'artifact-IC marker described as share of all ICs: %s', caption);
+    assert(contains(caption, "1 file skipped for alignment") && contains(caption, "0 cleaned files"), 'missing-data counts: %s', caption);
+
+    narrow = cache;
+    [narrow.summaries([narrow.summaries.status] == "ok").nChannels] = deal(30);
+    narrow.tables.NChanPop(1) = NaN; narrow.tables.NChanPop(2) = NaN;
+    caption = RELAX_QC_fig_data_taken(narrow, outDir);
+    assert(contains(caption, "7 of 30 channels"), 'budget is floor(0.25 * 30) = 7, as RELAX_channel_budget: %s', caption);
+    assert(contains(caption, "2 cleaned files"), 'counts cleaned files with a missing covariate row: %s', caption);
+
     empty = make_qc_cache_fixture(0);
     RELAX_QC_fig_paired_metrics(empty, fullfile(outDir, 'empty'));
     assertSaved(fullfile(outDir, 'empty'), 'fig3_paired_metrics');

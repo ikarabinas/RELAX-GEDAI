@@ -9,24 +9,28 @@ function caption = RELAX_QC_fig_data_taken(cache, outDir)
     isCleaned = T.Outcome == "cleaned";
 
     channelColumns = {'NChanImpedance', 'NChanPop', 'NChanBridge', 'NChanExtreme', 'NChanMuscle'};
+    requiredColumns = {'NChanImpedance', 'NChanPop', 'NChanExtreme', 'ExtremeExcisedSeconds', 'PopFractionSamplesInterpolated', ...
+                       'WicaArtifactICsReduced'};
+    isSkipped = string({S.status})' == "skipped";
+    lacksCovariates = isCleaned & ~isSkipped & any(isnan(T{:, requiredColumns}), 2);
     channels = zeroed(T{:, channelColumns});
     channels(~isCleaned, :) = 0;
     montage = median(arrayfun(@(s) s.nChannels, S), 'omitnan');
     duration = arrayfun(@(s) s.durationSeconds, S);
     excised = zeroed([T.ExtremeExcisedSeconds, T.PopExcisedSeconds]);
     excisedPercent = 100 * excised ./ (duration + sum(excised, 2));
-    interpolatedPercent = 100 * T.PopFractionSamplesInterpolated;
+    interpolatedPer10k = 1e4 * T.PopFractionSamplesInterpolated;
     variancePercent = 100 * arrayfun(@(s) s.varianceRemovedFraction, S);
     icPercent = 100 * T.WicaArtifactICsReduced;
 
     lost = sum(channels, 2) / montage + sum(excisedPercent, 2, 'omitnan') / 100;
     lost(~isCleaned) = Inf;
     [~, order] = sort(lost);
-    [T, channels, excisedPercent, interpolatedPercent, variancePercent, icPercent, isCleaned] = deal( ...
-        T(order, :), channels(order, :), excisedPercent(order, :), interpolatedPercent(order), ...
-        variancePercent(order), icPercent(order), isCleaned(order));
+    [T, channels, excisedPercent, interpolatedPer10k, variancePercent, icPercent, isCleaned, isSkipped, lacksCovariates] = deal( ...
+        T(order, :), channels(order, :), excisedPercent(order, :), interpolatedPer10k(order), ...
+        variancePercent(order), icPercent(order), isCleaned(order), isSkipped(order), lacksCovariates(order));
     x = 1:height(T);
-    budget = cache.meta.maxChannelProportion * montage;
+    budget = floor(cache.meta.maxChannelProportion * montage);
     suffix = commonSuffix(T.File);
     labels = extractBefore(T.File, strlength(T.File) - strlength(suffix) + 1);
 
@@ -45,19 +49,23 @@ function caption = RELAX_QC_fig_data_taken(cache, outDir)
         end
         ylabel(ax, {'Channels', 'rejected'});
         markNotCleaned(ax, x(~isCleaned), T.Outcome(~isCleaned), style);
+        markNotCleaned(ax, x(lacksCovariates), repmat("n/a", nnz(lacksCovariates), 1), style);
 
         ax = nexttile(layout);
         stack(ax, x, excisedPercent, style.channelScreens([4 2], :), {'Extreme periods', 'Pop excision'});
         ylabel(ax, {'% of recording', 'excised'});
+        markNotCleaned(ax, x(isSkipped), repmat("skipped", nnz(isSkipped), 1), style);
 
         ax = nexttile(layout);
-        bar(ax, x, interpolatedPercent, 0.8, 'FaceColor', style.channelScreens(2, :), 'EdgeColor', 'none');
-        ylabel(ax, {'% samples filled', 'by pop repair'});
+        bar(ax, x, interpolatedPer10k, 0.8, 'FaceColor', style.channelScreens(2, :), 'EdgeColor', 'none');
+        ax.YAxis.Exponent = 0;
+        ylabel(ax, {'Samples filled by', 'pop repair (per 10^4)'});
 
         ax = nexttile(layout); hold(ax, 'on');
         bar(ax, x, variancePercent, 0.8, 'FaceColor', style.removed, 'EdgeColor', 'none', 'DisplayName', 'Variance removed by wICA');
         plot(ax, x, icPercent, 'o', 'MarkerSize', 6, 'MarkerEdgeColor', style.ink, 'MarkerFaceColor', 'w', ...
-             'DisplayName', 'Artifact ICs reduced');
+             'DisplayName', 'Artifact ICs (% of all ICs)');
+        markNotCleaned(ax, x(isSkipped), repmat("skipped", nnz(isSkipped), 1), style);
         ylabel(ax, '%'); legend(ax, 'Location', 'northoutside', 'NumColumns', 2, 'Box', 'off');
         xticks(ax, x); xticklabels(ax, labels); ax.TickLabelInterpreter = 'none'; xtickangle(ax, 90); ax.FontSize = style.fontSize - 1;
 
@@ -71,12 +79,20 @@ function caption = RELAX_QC_fig_data_taken(cache, outDir)
     caption = string(sprintf(['## Figure 4 — Data taken by cleaning, per file\n\n' ...
         '%d files shown (%d cleaned, %d excluded, %d errored), sorted by the fraction of channels rejected plus the ' ...
         'fraction of time excised; files not yet processed are left out. Panels: channels rejected by each screen ' ...
-        'against the shared rejection budget; %% of the recording excised; %% of samples interpolated by pop repair; ' ...
-        'variance removed by wICA (baseline − cleaned over baseline) with the share of artifact ICs it reduced. ' ...
+        'against the shared rejection budget; %% of the recording excised; samples filled by pop repair per 10,000 samples; ' ...
+        'variance removed by wICA (baseline − cleaned over baseline), with markers for the share of all ICs that ICLabel ' ...
+        'classed as artifact and wICA reduced. ' ...
         'Look for files at the right-hand end that lost far more than the rest. ' ...
-        'The shared rejection budget is %s.%s\n'], ...
+        'The shared rejection budget is %s. Missing values are drawn as zero-height bars: %d cleaned file%s had no covariate ' ...
+        'row (marked "n/a"), and %d file%s skipped for alignment: excision and variance bars are absent (marked "skipped").%s\n'], ...
         height(T), sum(isCleaned), sum(T.Outcome == "excluded"), sum(T.Outcome == "error"), ...
-        budgetText(cache.meta.maxChannelProportion, budget, montage), suffixNote(suffix)));
+        budgetText(cache.meta.maxChannelProportion, budget, montage), nnz(lacksCovariates), pluralSuffix(nnz(lacksCovariates)), ...
+        nnz(isSkipped), pluralSuffix(nnz(isSkipped)), suffixNote(suffix)));
+end
+
+function s = pluralSuffix(n)
+    s = 's';
+    if n == 1, s = ''; end
 end
 
 function x = zeroed(x)
