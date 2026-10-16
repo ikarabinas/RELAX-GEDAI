@@ -6,16 +6,17 @@ function caption = RELAX_QC_fig_examples(cache, outDir)
 
     style = RELAX_QC_style();
     titles = struct('blink', "Largest blink", 'muscle', "Strongest muscle burst", 'pop', "Repaired pop");
-    beforeNames = struct('blink', "Before wICA", 'muscle', "Before wICA", 'pop', "No pop repair (reconstruction)");
+    beforeNames = struct('blink', "Before wICA", 'muscle', "Before wICA", 'pop', "No pop repair");
     afterNames  = struct('blink', "Cleaned", 'muscle', "Cleaned", 'pop', "Pop-repaired");
 
     caption = string(sprintf(['## Figure 1 — Example traces\n\n' ...
         'One figure per example file (%d): the median file and the worst files by blink amplitude, muscle power and ' ...
         'pop count, unless hand-picked. Each 6 s window shows the blink electrodes and the two channels with the ' ...
-        'most 20–80 Hz power. Blink and muscle columns: grey is the sample-matched data before wICA, blue is the ' ...
+        'most 20–80 Hz power; the pop column adds the repaired channel at the top. Blink and muscle columns: grey is the sample-matched data before wICA, blue is the ' ...
         'cleaned file, and the strip below is what wICA removed. Pop column: grey is the input file band-passed and ' ...
         'resampled without any pop repair, a display-only reconstruction rather than saved pipeline data, beside ' ...
-        'the pop-repaired data; the strip below shows the repaired channel only, because the other channels differ only by the processing choices of the reconstruction; the repaired interval is shaded, widened to at least 50 ms so it can be seen. ' ...
+        'the pop-repaired data; the strip below shows the repaired channel only, because the other channels differ only by the processing choices of the reconstruction; the repaired interval is shaded in orange, widened to at least 50 ms so it can be seen. ' ...
+        'The pop column is on the pre-excision timeline, so periods the pipeline later deletes as extreme are shaded light grey and labelled "later excised"; wild traces there are not repair damage. ' ...
         'The reconstruction also band-stops the line harmonics rather than applying ZaplinePlus, so line-noise differences there are not pop repair. ' ...
         'Traces and the pop removed strip are clipped to fixed limits, the pop removed strip at 1.2 times its 99th-percentile absolute value (marked "clipped"). Dashed black lines are boundaries. Good cleaning: the ' ...
         'blink and burst are gone from blue while the background rhythm is unchanged, and the removed strip ' ...
@@ -65,6 +66,7 @@ function drawWindow(traceAx, removedAx, w, beforeName, afterName, style)
     yRange = [-1.5 * spacing, max(offsets) + 3 * spacing];
 
     hold(traceAx, 'on');
+    shadeExcised(traceAx, w.excised, yRange, true, style);
     shade(traceAx, w.shade, yRange, style);
     hBefore = plot(traceAx, w.t, before - centre + offsets, 'Color', style.before, 'LineWidth', style.thin);
     hAfter  = plot(traceAx, w.t, after - centre + offsets, 'Color', style.cleaned, 'LineWidth', style.thin);
@@ -81,6 +83,7 @@ function drawWindow(traceAx, removedAx, w, beforeName, afterName, style)
     hold(removedAx, 'on');
     isPop = w.kind == "pop";
     [removedTraces, removedRange, removedClipped] = RELAX_QC_removed_strip(w.removed, isPop);
+    shadeExcised(removedAx, w.excised, removedRange, false, style);
     shade(removedAx, w.shade, removedRange, style);
     plot(removedAx, w.t, removedTraces', 'Color', [style.removed 0.6], 'LineWidth', style.thin);
     for b = w.boundaries, xline(removedAx, b, '--', 'Color', style.ink, 'LineWidth', 0.8); end
@@ -101,4 +104,14 @@ function shade(ax, interval, yRange, style)
     interval = centre + [-1 1] * max(diff(interval), minimumShadeSeconds()) / 2;
     patch(ax, interval([1 2 2 1]), yRange([1 1 2 2]), style.removed, 'FaceAlpha', 0.25, 'EdgeColor', style.removed, 'LineWidth', 0.5, ...
           'HandleVisibility', 'off');
+end
+
+function shadeExcised(ax, intervals, yRange, labelled, style)
+    for k = 1:size(intervals, 1)
+        patch(ax, intervals(k, [1 2 2 1]), yRange([1 1 2 2]), [0.85 0.85 0.85], 'FaceAlpha', 0.6, 'EdgeColor', 'none', 'HandleVisibility', 'off');
+        if labelled
+            text(ax, mean(intervals(k, :)), yRange(2) - 0.02 * diff(yRange), 'later excised', ...
+                 'HorizontalAlignment', 'center', 'VerticalAlignment', 'top', 'Color', style.muted, 'FontSize', style.fontSize - 1);
+        end
+    end
 end

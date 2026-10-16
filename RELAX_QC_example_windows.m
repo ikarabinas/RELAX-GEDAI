@@ -52,6 +52,7 @@ function w = popWindow(pick, summary, extremesEEG, paths, cfg, labels, opts)
     if isnan(pick.centres.pop) || (summary.pop.shadeSeconds(1) >= w.t(1) && summary.pop.shadeSeconds(2) <= w.t(end))
         w.shade = summary.pop.shadeSeconds;
     end
+    w.excised = RELAX_QC_excised_intervals(extremesEEG.RELAX.ExtremelyBadPeriodsForDeletion, extremesEEG.srate, w.t([1 end]));
     w.note = "Grey: input band-passed without pop repair (reconstruction, not saved pipeline data)";
 end
 

@@ -8,5 +8,6 @@ function test_RELAX_QC_empty_structs()
     assert(numel(both) == 2 && both(2).status == "ok" && both(1).status == "notCleaned", 'summaries concatenate');
     w = [RELAX_QC_empty_window("blink"), RELAX_QC_empty_window("pop")];
     assert(~any([w.available]) && w(2).kind == "pop", 'windows concatenate');
+    assert(isequal(size(w(1).excised), [0 2]), 'windows carry an empty excised list');
     fprintf('test_RELAX_QC_empty_structs: PASS\n');
 end

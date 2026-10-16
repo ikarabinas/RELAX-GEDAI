@@ -82,6 +82,7 @@ function w = exampleWindow(kind, chanlocs)
     w.boundaries = 104.5;
     if kind == "pop"
         w.shade = [102.9 103.1];
+        w.excised = [101.2 101.8; 104.6 105.4];
         w.note = "Grey: input band-passed without pop repair (reconstruction, not saved pipeline data)";
     end
 end
