@@ -26,6 +26,8 @@ function caption = RELAX_QC_fig_data_taken(cache, outDir)
         T(order, :), channels(order, :), excisedPercent(order, :), interpolatedPercent(order), ...
         variancePercent(order), icPercent(order), isCleaned(order));
     x = 1:height(T);
+    suffix = commonSuffix(T.File);
+    labels = extractBefore(T.File, strlength(T.File) - strlength(suffix) + 1);
 
     fig = figure('Visible', 'off', 'Units', 'centimeters', 'Position', [0 0 max(18, 0.35 * numel(x) + 6) 24], 'Color', 'w');
     layout = tiledlayout(fig, 4, 1, 'TileSpacing', 'loose', 'Padding', 'compact');
@@ -34,8 +36,11 @@ function caption = RELAX_QC_fig_data_taken(cache, outDir)
     else
         ax = nexttile(layout);
         stack(ax, x, channels, style.channelScreens, {'Impedance', 'Pop', 'Bridge', 'Extreme data', 'Muscle'});
-        if ~isnan(montage)
-            yline(ax, cache.meta.maxChannelProportion * montage, '--', 'Rejection budget', 'Color', style.muted, ...
+        budget = cache.meta.maxChannelProportion * montage;
+        limit = max(5, 1.2 * max(sum(channels, 2)));
+        ylim(ax, [0, limit]); yticks(ax, 0:max(1, ceil(limit / 6)):limit);
+        if budget <= limit
+            yline(ax, budget, '--', 'Rejection budget', 'Color', style.muted, ...
                   'LabelHorizontalAlignment', 'right', 'LabelVerticalAlignment', 'bottom', 'FontSize', style.fontSize - 1);
         end
         ylabel(ax, {'Channels', 'rejected'});
@@ -54,10 +59,11 @@ function caption = RELAX_QC_fig_data_taken(cache, outDir)
         plot(ax, x, icPercent, 'o', 'MarkerSize', 6, 'MarkerEdgeColor', style.ink, 'MarkerFaceColor', 'w', ...
              'DisplayName', 'Artifact ICs reduced');
         ylabel(ax, '%'); legend(ax, 'Location', 'northoutside', 'NumColumns', 2, 'Box', 'off');
-        xticks(ax, x); xticklabels(ax, T.File); ax.TickLabelInterpreter = 'none'; xtickangle(ax, 90);
+        xticks(ax, x); xticklabels(ax, labels); ax.TickLabelInterpreter = 'none'; xtickangle(ax, 90); ax.FontSize = style.fontSize - 1;
 
         axesList = findobj(fig, 'Type', 'axes');
-        set(axesList, 'XLim', [0.4, numel(x) + 0.6], 'FontSize', style.fontSize, 'YGrid', 'on');
+        set(axesList, 'XLim', [0.4, numel(x) + 0.6], 'YGrid', 'on');
+        set(axesList(axesList ~= ax), 'FontSize', style.fontSize);
         set(axesList(axesList ~= ax), 'XTickLabel', []);
     end
     RELAX_QC_save_figure(fig, outDir, 'fig4_data_taken');
@@ -67,8 +73,10 @@ function caption = RELAX_QC_fig_data_taken(cache, outDir)
         'fraction of time excised; files not yet processed are left out. Panels: channels rejected by each screen ' ...
         'against the shared rejection budget; %% of the recording excised; %% of samples interpolated by pop repair; ' ...
         'variance removed by wICA (baseline − cleaned over baseline) with the share of artifact ICs it reduced. ' ...
-        'Look for files at the right-hand end that lost far more than the rest.\n'], ...
-        height(T), sum(isCleaned), sum(T.Outcome == "excluded"), sum(T.Outcome == "error")));
+        'Look for files at the right-hand end that lost far more than the rest. ' ...
+        'The shared rejection budget is %.0f%% of the montage (%.0f of %.0f channels).%s\n'], ...
+        height(T), sum(isCleaned), sum(T.Outcome == "excluded"), sum(T.Outcome == "error"), ...
+        100 * cache.meta.maxChannelProportion, budget, montage, suffixNote(suffix)));
 end
 
 function x = zeroed(x)
@@ -89,4 +97,20 @@ function markNotCleaned(ax, x, outcome, style)
         text(ax, x(k), 0, " " + outcome(k), 'Rotation', 90, 'Color', style.muted, ...
              'FontSize', style.fontSize - 1, 'VerticalAlignment', 'middle');
     end
+end
+
+function suffix = commonSuffix(names)
+    suffix = "";
+    if numel(names) < 2, return, end
+    shortest = min(strlength(names));
+    for k = 1:shortest - 1
+        candidate = extractAfter(names(1), strlength(names(1)) - k);
+        if ~all(endsWith(names, candidate)), break, end
+        suffix = candidate;
+    end
+end
+
+function note = suffixNote(suffix)
+    note = "";
+    if suffix ~= "", note = sprintf(' File labels omit the shared suffix "%s".', suffix); end
 end

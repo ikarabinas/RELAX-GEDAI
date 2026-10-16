@@ -7,12 +7,14 @@ function test_RELAX_QC_fig_tables()
 
     caption = RELAX_QC_fig_paired_metrics(cache, outDir);
     assertSaved(outDir, 'fig3_paired_metrics');
-    assert(startsWith(caption, "## Figure 3") && contains(caption, "4 files"), 'caption: %s', caption);
+    assert(startsWith(caption, "## Figure 3") && contains(caption, "4 files") ...
+           && contains(caption, "floor") && contains(caption, "-0.31") && ~contains(caption, "exceed it"), 'caption: %s', caption);
 
     caption = RELAX_QC_fig_data_taken(cache, outDir);
     assertSaved(outDir, 'fig4_data_taken');
     assert(contains(caption, "6 files shown"), '4 ok + 1 skipped + 1 excluded, not the notProcessed one: %s', caption);
     assert(contains(caption, "1 excluded"), 'counts exclusions: %s', caption);
+    assert(contains(caption, "rejection budget") && contains(caption, "25%"), 'states budget: %s', caption);
 
     empty = make_qc_cache_fixture(0);
     RELAX_QC_fig_paired_metrics(empty, fullfile(outDir, 'empty'));
