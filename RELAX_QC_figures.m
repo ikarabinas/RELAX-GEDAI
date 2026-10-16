@@ -35,6 +35,26 @@ function RELAX_QC_figures(stage, onlyFiles)
     end
 end
 
-function drawAll(opts, outDir) %#ok<INUSD>
-    error('RELAX_QC:notYet', 'The draw stage is added in Task 9 of the plan.');
+function drawAll(opts, outDir)
+    loaded = load(opts.cachePath, 'cache');
+    cache = loaded.cache;
+    if RELAX_QC_cache_is_stale(cache, fullfile(opts.myPath, 'RELAXProcessed', 'Cleaned_Data'))
+        warning('RELAX_QC:staleCache', 'Cleaned_Data has files newer than %s; rerun the extract stage.', opts.cachePath);
+    end
+    captions = [RELAX_QC_fig_examples(cache, outDir); RELAX_QC_fig_spectra(cache, outDir); ...
+                RELAX_QC_fig_paired_metrics(cache, outDir); RELAX_QC_fig_data_taken(cache, outDir); ...
+                RELAX_QC_fig_blink_topo(cache, outDir)];
+    writeCaptions(cache, captions, opts.cachePath, outDir);
+    fprintf('RELAX_QC_figures: figures and captions.md written to %s\n', outDir);
+end
+
+function writeCaptions(cache, captions, cachePath, outDir)
+    isSkipped = [cache.summaries.status]' == "skipped";
+    skippedFiles = string(cache.tables.File(isSkipped));
+    reasons = [cache.summaries(isSkipped).skipReason]';
+    footer = sprintf('_Generated %s from %s. %d file(s) skipped:_ %s\n', string(datetime('now')), ...
+                     cachePath, nnz(isSkipped), strjoin(skippedFiles + " (" + reasons + ")", '; '));
+    fid = fopen(fullfile(outDir, 'captions.md'), 'w');
+    fprintf(fid, '%s\n', strjoin([captions(:); footer], newline));
+    fclose(fid);
 end
