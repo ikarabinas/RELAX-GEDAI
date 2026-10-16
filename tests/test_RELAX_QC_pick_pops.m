@@ -34,6 +34,27 @@ function test_RELAX_QC_pick_pops()
     picks = RELAX_QC_pick_pops(steps, labels, everything, inputSrate, extremesSrate);
     assert(~isempty(picks.largest) && isempty(picks.kept), 'no qualifying step leaves kept empty');
 
+    flagged = steps;
+    flagged.label = [flagged.label; {'E1'; 'E2'}];
+    flagged.amplitude = [flagged.amplitude; 5000; 4500];
+    flagged.sample = [flagged.sample; 19000; 21000];
+    flagged.onset = [flagged.onset; 18990; 20990];
+    flagged.offset = [flagged.offset; 19010; 21010];
+    flagged.commonMode = [flagged.commonMode; true; false];
+    flagged.eyeMovement = [flagged.eyeMovement; false; true];
+    picks = RELAX_QC_pick_pops(flagged, labels, zeros(0, 2), inputSrate, extremesSrate);
+    assert(picks.largest.amplitude == 900 && picks.kept.amplitude == 700, 'common-mode and eye-movement steps are never picked, however large');
+
+    twoSteps = structfun(@(f) f(1:2), steps, 'UniformOutput', false);
+    twoSteps.onset(2) = 5003; twoSteps.sample(2) = 5006; twoSteps.offset(2) = 5010;
+    lastSampleOfPeriod = [1, 1251];
+    picks = RELAX_QC_pick_pops(twoSteps, labels, lastSampleOfPeriod, inputSrate, extremesSrate);
+    assert(isempty(picks.kept), 'a transition starting inside the last sample of an excised period overlaps it');
+
+    handPickedWindow = [4 6];
+    picks = RELAX_QC_pick_pops(steps, labels, zeros(0, 2), inputSrate, extremesSrate, handPickedWindow);
+    assert(picks.largest.amplitude == 900 && picks.kept.amplitude == 600, 'kept skips the pop inside a hand-picked largest-pop window');
+
     onlyOne = structfun(@(f) f(1), steps, 'UniformOutput', false);
     picks = RELAX_QC_pick_pops(onlyOne, labels, zeros(0, 2), inputSrate, extremesSrate);
     assert(~isempty(picks.largest) && isempty(picks.kept), 'a single step cannot fill both columns');

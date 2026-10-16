@@ -9,7 +9,7 @@
 % are subtracted first when cfg asks for it and their steps were saved on the EEG; the
 % reference trace is recomputed because the wrapper does not save it. Repair options and
 % BasisExcludeLabels follow RELAX_Wrapper_slurm.m. Both outputs hold only showLabels (those
-% present), in that order, still at the input rate and unfiltered.
+% present), in dataset order, still at the input rate and unfiltered.
 %
 % info - .referencePopsReplayed (logical) .nSteps .nMontageChannels
 

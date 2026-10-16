@@ -37,8 +37,11 @@ end
 
 function windows = popWindows(pick, summary, extremesEEG, paths, cfg, shownLabels, opts)
     windows = [RELAX_QC_empty_window("pop"), RELAX_QC_empty_window("popKept")];
+    handPickedCentre = pick.centres.pop;
+    shownSeconds = zeros(0, 2);
+    if ~isnan(handPickedCentre), shownSeconds = handPickedCentre + [-1 1] * opts.exampleSeconds / 2; end
     picks = RELAX_QC_pick_pops(RELAX_QC_saved_pop_steps(extremesEEG), {extremesEEG.chanlocs.labels}, ...
-                               extremesEEG.RELAX.ExtremelyBadPeriodsForDeletion, summary.inputSrate, extremesEEG.srate);
+                               extremesEEG.RELAX.ExtremelyBadPeriodsForDeletion, summary.inputSrate, extremesEEG.srate, shownSeconds);
     windows(1).note = "No repaired pop in this file";
     windows(2).note = "No repaired pop outside later-excised periods";
     chosen = {picks.largest, picks.kept};

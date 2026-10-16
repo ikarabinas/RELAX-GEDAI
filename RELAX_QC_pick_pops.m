@@ -2,6 +2,7 @@
 %
 % Usage:
 %   >> picks = RELAX_QC_pick_pops(steps, montageLabels, extremePeriods, inputSrate, extremesSrate);
+%   >> picks = RELAX_QC_pick_pops(..., shownSeconds);
 %
 % Inputs:
 %   steps          - saved EEG.RELAX.PopScreen.steps (struct or table), [] when none were saved;
@@ -9,15 +10,19 @@
 %   montageLabels  - channels present in Extremes_Rejected
 %   extremePeriods - [k x 2] EEG.RELAX.ExtremelyBadPeriodsForDeletion, in samples at
 %                    extremesSrate, on the same pre-excision timeline as steps
+%   shownSeconds   - optional [start end]: the stretch the largest-pop window shows when its
+%                    centre is hand-picked; steps centred inside it are not offered as picks.kept
 %
 % Candidates are a file's own steps: not common-mode, not eye movement, on a channel in the
 % montage. picks.largest is the candidate with the largest |amplitude|. picks.kept is the
-% largest candidate whose [onset, offset] overlaps no extreme period, other than
+% largest candidate whose [onset, offset] overlaps no extreme period (a period covers its
+% first sample's start to its last sample's end), other than
 % picks.largest itself so the two Figure 1 columns always differ. Each pick is [] when no
 % step qualifies, otherwise a struct with .label .amplitude .centreSeconds .shadeSeconds.
 
-function picks = RELAX_QC_pick_pops(steps, montageLabels, extremePeriods, inputSrate, extremesSrate)
+function picks = RELAX_QC_pick_pops(steps, montageLabels, extremePeriods, inputSrate, extremesSrate, shownSeconds)
 
+    if nargin < 6, shownSeconds = zeros(0, 2); end
     picks = struct('largest', [], 'kept', []);
     if isempty(steps), return, end
     if istable(steps), steps = table2struct(steps, 'ToScalar', true); end
@@ -31,9 +36,13 @@ function picks = RELAX_QC_pick_pops(steps, montageLabels, extremePeriods, inputS
     picks.largest = describe(steps, largest, inputSrate);
 
     transitionSeconds = ([steps.onset(:), steps.offset(:)] - 1) / inputSrate;
-    clear = ~overlapsAny(transitionSeconds, (extremePeriods - 1) / extremesSrate);
+    extremePeriods = reshape(extremePeriods, [], 2);
+    outsideExcision = ~overlapsAny(transitionSeconds, [extremePeriods(:, 1) - 1, extremePeriods(:, 2)] / extremesSrate);
+    centreSeconds = (steps.sample(:) - 1) / inputSrate;
+    inShownStretch = centreSeconds >= shownSeconds(:, 1)' & centreSeconds <= shownSeconds(:, 2)';
+    notShown = ~any(inShownStretch, 2);
     notLargest = (1:numel(amplitude))' ~= largest;
-    kept = bestOf(candidate & clear & notLargest, amplitude);
+    kept = bestOf(candidate & outsideExcision & notLargest & notShown, amplitude);
     if ~isempty(kept), picks.kept = describe(steps, kept, inputSrate); end
 end
 
