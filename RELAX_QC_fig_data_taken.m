@@ -26,6 +26,7 @@ function caption = RELAX_QC_fig_data_taken(cache, outDir)
         T(order, :), channels(order, :), excisedPercent(order, :), interpolatedPercent(order), ...
         variancePercent(order), icPercent(order), isCleaned(order));
     x = 1:height(T);
+    budget = cache.meta.maxChannelProportion * montage;
     suffix = commonSuffix(T.File);
     labels = extractBefore(T.File, strlength(T.File) - strlength(suffix) + 1);
 
@@ -36,7 +37,6 @@ function caption = RELAX_QC_fig_data_taken(cache, outDir)
     else
         ax = nexttile(layout);
         stack(ax, x, channels, style.channelScreens, {'Impedance', 'Pop', 'Bridge', 'Extreme data', 'Muscle'});
-        budget = cache.meta.maxChannelProportion * montage;
         limit = max(5, 1.2 * max(sum(channels, 2)));
         ylim(ax, [0, limit]); yticks(ax, 0:max(1, ceil(limit / 6)):limit);
         if budget <= limit
@@ -74,9 +74,9 @@ function caption = RELAX_QC_fig_data_taken(cache, outDir)
         'against the shared rejection budget; %% of the recording excised; %% of samples interpolated by pop repair; ' ...
         'variance removed by wICA (baseline − cleaned over baseline) with the share of artifact ICs it reduced. ' ...
         'Look for files at the right-hand end that lost far more than the rest. ' ...
-        'The shared rejection budget is %.0f%% of the montage (%.0f of %.0f channels).%s\n'], ...
+        'The shared rejection budget is %s.%s\n'], ...
         height(T), sum(isCleaned), sum(T.Outcome == "excluded"), sum(T.Outcome == "error"), ...
-        100 * cache.meta.maxChannelProportion, budget, montage, suffixNote(suffix)));
+        budgetText(cache.meta.maxChannelProportion, budget, montage), suffixNote(suffix)));
 end
 
 function x = zeroed(x)
@@ -113,4 +113,9 @@ end
 function note = suffixNote(suffix)
     note = "";
     if suffix ~= "", note = sprintf(' File labels omit the shared suffix "%s".', suffix); end
+end
+
+function text = budgetText(proportion, budget, montage)
+    text = sprintf('%.0f%% of the montage', 100 * proportion);
+    if ~isnan(montage), text = sprintf('%s (%.0f of %.0f channels)', text, budget, montage); end
 end
