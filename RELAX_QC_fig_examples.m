@@ -15,9 +15,9 @@ function caption = RELAX_QC_fig_examples(cache, outDir)
         'most 20–80 Hz power. Blink and muscle columns: grey is the sample-matched data before wICA, blue is the ' ...
         'cleaned file, and the strip below is what wICA removed. Pop column: grey is the input file band-passed and ' ...
         'resampled without any pop repair, a display-only reconstruction rather than saved pipeline data, beside ' ...
-        'the pop-repaired data; the repaired interval is shaded, widened to at least 50 ms so it can be seen. ' ...
+        'the pop-repaired data; the strip below shows the repaired channel only, because the other channels differ only by the processing choices of the reconstruction; the repaired interval is shaded, widened to at least 50 ms so it can be seen. ' ...
         'The reconstruction also band-stops the line harmonics rather than applying ZaplinePlus, so line-noise differences there are not pop repair. ' ...
-        'Traces and removed strips are clipped to fixed limits, the removed strips at 1.2 times the median per-channel peak (marked "clipped"). Dashed black lines are boundaries. Good cleaning: the ' ...
+        'Traces and the pop removed strip are clipped to fixed limits, the pop removed strip at 1.2 times its 99th-percentile absolute value (marked "clipped"). Dashed black lines are boundaries. Good cleaning: the ' ...
         'blink and burst are gone from blue while the background rhythm is unchanged, and the removed strip ' ...
         'carries only the artifact.\n'], numel(cache.examples)));
 
@@ -52,7 +52,10 @@ end
 
 function seconds = minimumShadeSeconds(), seconds = 0.05; end
 
-function microvolts = minimumRemovedLimit(), microvolts = 1; end
+function label = removedLabel(w, isPop)
+    label = 'Removed (\muV)';
+    if isPop, label = [w.channels{1} ' removed (\muV)']; end
+end
 
 function drawWindow(traceAx, removedAx, w, beforeName, afterName, style)
     before = w.before; after = w.after;
@@ -76,14 +79,14 @@ function drawWindow(traceAx, removedAx, w, beforeName, afterName, style)
     markClipped(traceAx, any(traceStacked(:) < yRange(1) | traceStacked(:) > yRange(2)), style);
 
     hold(removedAx, 'on');
-    removedLimit = max(1.2 * median(max(abs(w.removed), [], 2)), minimumRemovedLimit());
-    removedRange = [-removedLimit removedLimit];
+    isPop = w.kind == "pop";
+    [removedTraces, removedRange, removedClipped] = RELAX_QC_removed_strip(w.removed, isPop);
     shade(removedAx, w.shade, removedRange, style);
-    plot(removedAx, w.t, w.removed', 'Color', [style.removed 0.6], 'LineWidth', style.thin);
+    plot(removedAx, w.t, removedTraces', 'Color', [style.removed 0.6], 'LineWidth', style.thin);
     for b = w.boundaries, xline(removedAx, b, '--', 'Color', style.ink, 'LineWidth', 0.8); end
     xlim(removedAx, [w.t(1) w.t(end)]); ylim(removedAx, removedRange);
-    markClipped(removedAx, any(abs(w.removed(:)) > removedLimit), style);
-    xlabel(removedAx, 'Time (s)'); ylabel(removedAx, 'Removed (\muV)'); removedAx.FontSize = style.fontSize;
+    markClipped(removedAx, removedClipped, style);
+    xlabel(removedAx, 'Time (s)'); ylabel(removedAx, removedLabel(w, isPop)); removedAx.FontSize = style.fontSize;
 end
 
 function markClipped(ax, isClipped, style)
