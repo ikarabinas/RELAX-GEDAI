@@ -4,7 +4,7 @@ function test_RELAX_QC_extract_robustness()
 
     windows = RELAX_QC_try_example_windows(struct('file', "f1", 'centres', struct('blink', NaN, 'muscle', NaN, 'pop', NaN)), ...
         RELAX_QC_empty_summary(), struct('input', 'nope.set', 'extremes', 'nope_E.set', 'cleaned', 'nope_C.set'), struct(), struct());
-    assert(numel(windows) == 3 && isequal([windows.kind], ["blink", "muscle", "pop"]), 'three windows, in figure order');
+    assert(numel(windows) == 4 && isequal([windows.kind], ["blink", "muscle", "pop", "popKept"]), 'four windows, in figure order');
     assert(~any([windows.available]), 'all unavailable after an error');
     assert(all(strlength([windows.note]) > 0) && all(contains([windows.note], "nope")), 'each note names the error: %s', windows(1).note);
 

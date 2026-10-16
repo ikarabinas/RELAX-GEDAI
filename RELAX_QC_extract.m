@@ -28,7 +28,7 @@ function cache = RELAX_QC_extract(opts)
     for i = 1:n
         if T.Outcome(i) ~= "cleaned", continue, end
         try
-            summaries(i) = RELAX_QC_file_summary(filePaths(processed, inputs, T.File(i)), cfgs(char(T.Participant(i))), opts);
+            summaries(i) = RELAX_QC_file_summary(RELAX_QC_file_paths(processed, inputs, T.File(i)), cfgs(char(T.Participant(i))), opts);
         catch err
             summaries(i).status = "skipped";
             summaries(i).skipReason = string(err.message);
@@ -49,17 +49,7 @@ function cache = RELAX_QC_extract(opts)
 
     saveCache(opts, cfgs, T, summaries, picks, emptyExamples(), true);
 
-    examples = emptyExamples();
-    for k = 1:numel(picks)
-        i = find(T.File == picks(k).file, 1);
-        if summaries(i).status ~= "ok"
-            warning('RELAX_QC:exampleUnavailable', 'Example %s has status %s; not shown.', picks(k).file, summaries(i).status);
-            continue
-        end
-        windows = RELAX_QC_try_example_windows(picks(k), summaries(i), filePaths(processed, inputs, T.File(i)), ...
-                                               cfgs(char(T.Participant(i))), opts);
-        examples(end+1) = struct('file', picks(k).file, 'role', picks(k).role, 'windows', windows); %#ok<AGROW>
-    end
+    examples = RELAX_QC_build_examples(picks, T, summaries, cfgs, processed, inputs, opts);
 
     saveCache(opts, cfgs, T, summaries, picks, examples, false);
     fprintf('RELAX_QC_extract: %d ok, %d skipped, cache %s\n', sum(~unusable), sum([summaries.status] == "skipped"), opts.cachePath);
@@ -85,12 +75,4 @@ function saveCache(opts, cfgs, T, summaries, picks, examples, partial)
     cache.picks = picks;
     cache.examples = examples;
     save(opts.cachePath, 'cache', '-v7.3');
-end
-
-function paths = filePaths(processed, inputs, file)
-    hit = find(strcmp({inputs.name}, char(file + ".set")), 1);
-    if isempty(hit), error('RELAX_QC:missingInput', 'No input file %s.set under myPath', file); end
-    paths.input    = fullfile(inputs(hit).folder, inputs(hit).name);
-    paths.extremes = char(fullfile(processed, 'Extremes_Rejected', file + "_Extremes_Rejected.set"));
-    paths.cleaned  = char(fullfile(processed, 'Cleaned_Data', file + "_RELAX.set"));
 end

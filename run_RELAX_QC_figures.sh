@@ -10,7 +10,8 @@
 
 # Artifact-removal QC figure set (RELAX_QC_figures.m).
 #   mkdir -p logs && sbatch run_RELAX_QC_figures.sh [stage] [files]
-#     stage - extract | draw | all (default: all)
+#     stage - extract | examples | draw | all (default: all)
+#              examples rebuilds only the Figure 1 windows in the existing cache
 #     files - optional comma-separated base names to trial on a few files,
 #             e.g. m144_dlpfc_day1_stitched,m208_dlpfc_day1_stitched
 

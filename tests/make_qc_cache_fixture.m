@@ -53,10 +53,12 @@ function cache = make_qc_cache_fixture(nOk)
     picks = struct('file', {}, 'role', {}, 'centres', {});
     roles = ["median", "worst blink"];
     for k = 1:min(2, nOk)
-        windows = [exampleWindow("blink", chanlocs), exampleWindow("muscle", chanlocs), exampleWindow("pop", chanlocs)];
+        windows = [exampleWindow("blink", chanlocs), exampleWindow("muscle", chanlocs), exampleWindow("pop", chanlocs), exampleWindow("popKept", chanlocs)];
         if k == 2
             windows(3) = RELAX_QC_empty_window("pop");
             windows(3).note = "No repaired pop in this file";
+            windows(4) = RELAX_QC_empty_window("popKept");
+            windows(4).note = "No repaired pop outside later-excised periods";
         end
         examples(end+1) = struct('file', files(k), 'role', roles(k), 'windows', windows); %#ok<AGROW>
         picks(end+1) = struct('file', files(k), 'role', roles(k), 'centres', struct('blink', NaN, 'muscle', NaN, 'pop', NaN)); %#ok<AGROW>
@@ -80,9 +82,9 @@ function w = exampleWindow(kind, chanlocs)
     w.after = w.before - [0.95 * bump; 0.95 * bump; 0.45 * bump; zeros(3, 3000)];
     w.removed = w.before - w.after;
     w.boundaries = 104.5;
-    if kind == "pop"
+    if kind == "pop" || kind == "popKept"
         w.shade = [102.9 103.1];
         w.excised = [101.2 101.8; 104.6 105.4];
-        w.note = "Grey: input band-passed without pop repair (reconstruction, not saved pipeline data)";
+        w.note = "Grey: raw input, unfiltered. Blue: pop repair replayed on it";
     end
 end

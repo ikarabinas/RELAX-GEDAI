@@ -1,26 +1,31 @@
 % RELAX_QC_fig_examples() - Figure 1: before/after traces at the largest blink, the
-%                           strongest muscle burst and a repaired pop, one figure per
-%                           example file.
+%                           strongest muscle burst, the largest pop and the largest pop
+%                           outside later-excised periods, one figure per example file.
 
 function caption = RELAX_QC_fig_examples(cache, outDir)
 
     style = RELAX_QC_style();
-    titles = struct('blink', "Largest blink", 'muscle', "Strongest muscle burst", 'pop', "Repaired pop");
-    beforeNames = struct('blink', "Before wICA", 'muscle', "Before wICA", 'pop', "No pop repair");
-    afterNames  = struct('blink', "Cleaned", 'muscle', "Cleaned", 'pop', "Pop-repaired");
+    titles = struct('blink', "Largest blink", 'muscle', "Strongest muscle burst", 'pop', "Largest pop", 'popKept', "Largest pop kept");
+    beforeNames = struct('blink', "Before wICA", 'muscle', "Before wICA", 'pop', "No pop repair", 'popKept', "No pop repair");
+    afterNames  = struct('blink', "Cleaned", 'muscle', "Cleaned", 'pop', "Pop-repaired", 'popKept', "Pop-repaired");
 
     caption = string(sprintf(['## Figure 1 — Example traces\n\n' ...
         'One figure per example file (%d): the median file and the worst files by blink amplitude, muscle power and ' ...
         'pop count, unless hand-picked. Each 6 s window shows the blink electrodes and the two channels with the ' ...
-        'most 20–80 Hz power; the pop column adds the repaired channel at the top. Blink and muscle columns: grey is the sample-matched data before wICA, blue is the ' ...
-        'cleaned file, and the strip below is what wICA removed. Pop column: grey is the input file band-passed and ' ...
-        'resampled without any pop repair, a display-only reconstruction rather than saved pipeline data, beside ' ...
-        'the pop-repaired data; the strip below shows the repaired channel only, because the other channels differ only by the processing choices of the reconstruction; the repaired interval is shaded in orange, widened to at least 50 ms so it can be seen. ' ...
-        'The pop column is on the pre-excision timeline, so periods the pipeline later deletes as extreme are shaded light grey and labelled "later excised"; wild traces there are not repair damage. ' ...
-        'The reconstruction also band-stops the line harmonics rather than applying ZaplinePlus, so line-noise differences there are not pop repair. ' ...
+        'most 20–80 Hz power; the two pop columns add the repaired channel at the top. Blink and muscle columns: grey is the sample-matched data before wICA, blue is the ' ...
+        'cleaned file, and the strip below is what wICA removed. ' ...
+        'Pop columns: the left shows the file''s own pop step with the largest amplitude, the right the largest one whose transition does not overlap any period the pipeline later deletes as extreme ' ...
+        '(the next-largest step when that is the same pop as on the left; a note when none qualifies). ' ...
+        'Both are drawn on unfiltered data at the input sample rate, one offset per channel (its median over the first second of the window) subtracted so the stacked traces are readable. ' ...
+        'Grey is the raw input; blue is the same input with the pipeline''s pop repair replayed on it (RELAX_repair_steps with the saved steps and the participant''s saved options). ' ...
+        'The replay is a display reconstruction, not saved pipeline data, and uses the input restricted to the channels of Extremes_Rejected as the montage. ' ...
+        '%s' ...
+        'The strip below is grey minus blue on the repaired channel only: the step itself and the slow drift that the detrend removes across the whole channel, not just at the pop. ' ...
+        'The repaired interval is shaded in orange, widened to at least 50 ms so it can be seen. ' ...
+        'The pop columns are on the pre-excision timeline, so periods the pipeline later deletes as extreme are shaded light grey and labelled "later excised"; wild traces there are not repair damage. ' ...
         'Traces and the pop removed strip are clipped to fixed limits, the pop removed strip at 1.2 times its 99th-percentile absolute value (marked "clipped"). Dashed black lines are boundaries. Good cleaning: the ' ...
         'blink and burst are gone from blue while the background rhythm is unchanged, and the removed strip ' ...
-        'carries only the artifact.\n'], numel(cache.examples)));
+        'carries only the artifact.\n'], numel(cache.examples), referencePopSentence(cache)));
 
     if isempty(cache.examples)
         fig = figure('Visible', 'off', 'Units', 'centimeters', 'Position', [0 0 18 6], 'Color', 'w');
@@ -30,14 +35,14 @@ function caption = RELAX_QC_fig_examples(cache, outDir)
 
     for k = 1:numel(cache.examples)
         example = cache.examples(k);
-        fig = figure('Visible', 'off', 'Units', 'centimeters', 'Position', [0 0 28 15], 'Color', 'w');
-        layout = tiledlayout(fig, 4, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
+        fig = figure('Visible', 'off', 'Units', 'centimeters', 'Position', [0 0 36 15], 'Color', 'w');
+        layout = tiledlayout(fig, 4, 4, 'TileSpacing', 'compact', 'Padding', 'compact');
         title(layout, example.file + " (" + example.role + ")", 'Interpreter', 'none', 'FontSize', style.fontSize + 1);
         for j = 1:numel(example.windows)
             w = example.windows(j);
             kind = char(w.kind);
             traceAx = nexttile(layout, j, [3 1]);
-            removedAx = nexttile(layout, 9 + j);
+            removedAx = nexttile(layout, 12 + j);
             if ~w.available
                 RELAX_QC_draw_note(traceAx, w.note);
                 axis(removedAx, 'off');
@@ -51,7 +56,17 @@ function caption = RELAX_QC_fig_examples(cache, outDir)
     end
 end
 
+function sentence = referencePopSentence(cache)
+    replayed = arrayfun(@(e) any(contains([e.windows.note], 'reference pops subtracted')), cache.examples);
+    sentence = "No reference pops needed replaying in these files (reference-pop repair off, or none detected). ";
+    if any(replayed)
+        sentence = "Reference pops were subtracted first in the replay for " + sum(replayed) + " of " + numel(replayed) + " of these files. ";
+    end
+end
+
 function seconds = minimumShadeSeconds(), seconds = 0.05; end
+
+function is = isPopKind(w), is = any(w.kind == ["pop", "popKept"]); end
 
 function label = removedLabel(w, isPop)
     label = 'Removed (\muV)';
@@ -60,7 +75,7 @@ end
 
 function drawWindow(traceAx, removedAx, w, beforeName, afterName, style)
     before = w.before; after = w.after;
-    centre = median(before, 2);
+    centre = median(before, 2) * ~isPopKind(w);
     spacing = max(8 * median(mad(before, 1, 2)), eps);
     offsets = (size(before, 1) - 1:-1:0)' * spacing;
     yRange = [-1.5 * spacing, max(offsets) + 3 * spacing];
@@ -81,7 +96,7 @@ function drawWindow(traceAx, removedAx, w, beforeName, afterName, style)
     markClipped(traceAx, any(traceStacked(:) < yRange(1) | traceStacked(:) > yRange(2)), style);
 
     hold(removedAx, 'on');
-    isPop = w.kind == "pop";
+    isPop = isPopKind(w);
     [removedTraces, removedRange, removedClipped] = RELAX_QC_removed_strip(w.removed, isPop);
     shadeExcised(removedAx, w.excised, removedRange, false, style);
     shade(removedAx, w.shade, removedRange, style);

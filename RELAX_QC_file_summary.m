@@ -99,18 +99,10 @@ function summary = addBlinks(summary, baseline, cleanedEEG, removedData, blinkLa
 end
 
 function summary = addPop(summary, extremesEEG)
-    if ~isfield(extremesEEG.RELAX, 'PopScreen') || ~isfield(extremesEEG.RELAX.PopScreen, 'steps'), return, end
-    steps = extremesEEG.RELAX.PopScreen.steps;
-    if istable(steps), steps = table2struct(steps, 'ToScalar', true); end
+    steps = RELAX_QC_saved_pop_steps(extremesEEG);
+    if isempty(steps), return, end
     summary.scores.popSteps = numel(steps.sample);
-    own = ~steps.commonMode(:) & ismember(steps.label(:), {extremesEEG.chanlocs.labels});
-    if isfield(steps, 'eyeMovement'), own = own & ~steps.eyeMovement(:); end
-    if ~any(own), return, end
-    amplitude = abs(steps.amplitude(:));
-    amplitude(~own) = -Inf;
-    [~, i] = max(amplitude);
     % Pop steps are detected before resampling, at the input file's rate:
-    summary.pop = struct('label', string(steps.label{i}), ...
-                         'centreSeconds', (steps.sample(i) - 1) / summary.inputSrate, ...
-                         'shadeSeconds', ([steps.onset(i), steps.offset(i)] - 1) / summary.inputSrate);
+    picks = RELAX_QC_pick_pops(steps, {extremesEEG.chanlocs.labels}, zeros(0, 2), summary.inputSrate, extremesEEG.srate);
+    summary.pop = picks.largest;
 end

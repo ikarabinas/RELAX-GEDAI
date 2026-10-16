@@ -3,6 +3,7 @@
 %
 % Usage:
 %   >> RELAX_QC_figures('extract')   % stage 1, slow: submit with sbatch run_RELAX_QC_figures.sh extract
+%   >> RELAX_QC_figures('examples')  % rebuild only the Figure 1 example windows in the cache
 %   >> RELAX_QC_figures('draw')      % stage 2, fast: redraw every figure from the cache
 %   >> RELAX_QC_figures('all')       % both
 %   >> RELAX_QC_figures('extract', {'m144_dlpfc_day1_stitched'})   % trial on a few files
@@ -30,9 +31,24 @@ function RELAX_QC_figures(stage, onlyFiles)
     if any(strcmp(stage, {'extract', 'all'}))
         RELAX_QC_extract(opts);
     end
+    if strcmp(stage, 'examples')
+        rebuildExamples(opts);
+    end
     if any(strcmp(stage, {'draw', 'all'}))
         drawAll(opts, outDir);
     end
+end
+
+function rebuildExamples(opts)
+    loaded = load(opts.cachePath, 'cache');
+    cache = loaded.cache;
+    processed = fullfile(opts.myPath, 'RELAXProcessed');
+    [~, cfgs] = RELAX_QC_load_tables(fullfile(processed, 'PerParticipantStats'), fullfile(processed, 'Cleaned_Data'));
+    inputs = dir(fullfile(opts.myPath, '**', '*.set'));
+    inputs = inputs(~contains({inputs.folder}, 'RELAXProcessed'));
+    cache.examples = RELAX_QC_build_examples(cache.picks, cache.tables, cache.summaries, cfgs, processed, inputs, opts);
+    save(opts.cachePath, 'cache', '-v7.3');
+    fprintf('RELAX_QC_figures: %d example file(s) rebuilt in %s\n', numel(cache.examples), opts.cachePath);
 end
 
 function drawAll(opts, outDir)

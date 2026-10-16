@@ -2,5 +2,6 @@
 
 function w = RELAX_QC_empty_window(kind)
     w = struct('kind', string(kind), 'available', false, 'note', "", 'channels', {{}}, ...
-               't', [], 'before', [], 'after', [], 'removed', [], 'shade', [], 'boundaries', [], 'excised', zeros(0, 2));
+               't', [], 'before', [], 'after', [], 'removed', [], 'shade', [], 'boundaries', [], 'excised', zeros(0, 2), ...
+               'fidelity', struct('channels', {{}}, 'relativeRms', [], 'fractionCompared', NaN));
 end
