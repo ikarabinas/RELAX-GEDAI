@@ -24,6 +24,6 @@ cd /home/nga4004/gitRepos/RELAX-GEDAI
 
 matlab -nodisplay -nosplash -batch "\
 addpath('/home/nga4004/tools/eeglab2026.0.0'); eeglab nogui; \
-addpath(pwd); \
+addpath(pwd); RELAX_add_vendored_noisetools(); \
 files = strsplit('${FILES}', ','); files = files(~cellfun(@isempty, files)); \
 RELAX_QC_figures('${STAGE}', files)"

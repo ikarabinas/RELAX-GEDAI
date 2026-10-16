@@ -79,9 +79,10 @@ end
 
 function w = popWindow(w, pop, centre, unrepaired, repaired, filtered, extremesEEG, labels, opts)
     w = fillWindow(w, centre, unrepaired, repaired, labels, opts);
-    offset = median(w.before(:, w.t < w.t(1) + 1), 2);
-    w.before = w.before - offset;
-    w.after = w.after - offset;
+    firstSecond = w.t < w.t(1) + 1;
+    w.before = w.before - median(w.before(:, firstSecond), 2);
+    w.after = w.after - median(w.after(:, firstSecond), 2);
+    w.removed = w.before - w.after;
     if isequal(centre, pop.centreSeconds) || (pop.shadeSeconds(1) >= w.t(1) && pop.shadeSeconds(2) <= w.t(end))
         w.shade = pop.shadeSeconds;
     end
