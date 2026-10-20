@@ -88,5 +88,11 @@ function test_RELAX_excluding_channels_and_epoching_boundary()
             segIdx, nanCount);
     end
 
+    % Segment 7's epochs are all relabelled 'Y' (last 11 events) and never evaluated, so
+    % its final sample must stay NaN with them rather than be patched clean on behalf of
+    % an epoch that was never evaluated:
+    assert(isnan(mask(nSamples)), ...
+        'final sample of an un-evaluated segment was patched clean, leaving a one-sample island');
+
     fprintf('test_RELAX_excluding_channels_and_epoching_boundary: PASS\n');
 end

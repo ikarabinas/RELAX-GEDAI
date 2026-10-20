@@ -178,12 +178,14 @@ function [continuousEEG, epochedEEG] = RELAX_excluding_channels_and_epoching_bou
     % Patch in the one-sample-per-segment gap described above: the epoch loop always
     % stops one sample short of end_latencies(k), so that final sample is otherwise left
     % NaN and would later be swept into ExtremelyBadPeriodsForDeletion despite having been
-    % effectively evaluated as part of its immediately preceding epoch. Only patched for
-    % segments that actually produced an epoch, so a segment too short to evaluate at all
-    % is not given a clean stamp it never earned:
+    % effectively evaluated as part of its immediately preceding epoch. It takes that
+    % epoch's status rather than a clean stamp, so a final epoch relabelled 'Y' (never
+    % evaluated) does not leave a one-sample clean island after it; the extreme case is
+    % handled the same way in RELAX_excluding_extreme_values. Only patched for segments
+    % that actually produced an epoch, so the preceding sample is in the same segment:
     for k = find(segmentHadEpoch)
-        epochedEEG.RELAXProcessing.Details.NaNsForNonEventsAllChannels(:,segments(k,2))=0;
-        epochedEEG.RELAXProcessing.Details.NaNsForNonEvents(:,segments(k,2))=0;
+        epochedEEG.RELAXProcessing.Details.NaNsForNonEventsAllChannels(:,segments(k,2))=epochedEEG.RELAXProcessing.Details.NaNsForNonEventsAllChannels(:,segments(k,2)-1);
+        epochedEEG.RELAXProcessing.Details.NaNsForNonEvents(:,segments(k,2))=epochedEEG.RELAXProcessing.Details.NaNsForNonEvents(:,segments(k,2)-1);
     end
 
     TotalInitialChannels=size(continuousEEG.allchan,2);

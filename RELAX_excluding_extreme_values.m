@@ -258,6 +258,16 @@ function [continuousEEG, epochedEEG] = RELAX_excluding_extreme_values(continuous
             epochedEEG.RELAXProcessing.Details.ExtremeOutlierPeriods(epochedEEG.event(e).originallatency:epochedEEG.event(e).originallatency+(round(1000/RELAX_cfg.ms_per_sample)-1))=OneSecondOf1s;
         end
     end
+    % RELAX_excluding_channels_and_epoching_boundary stops each segment's last epoch
+    % one sample short of the segment end and stamps that final sample clean on the
+    % epoch's behalf. It must share that epoch's rejection, or eeg_eegrej leaves it as
+    % a one-sample island between the deletion and the boundary:
+    segments = RELAX_get_segments(continuousEEG);
+    segmentEnds = segments(segments(:,2) > segments(:,1), 2)';
+    rejectedSegmentEnds = segmentEnds(epochedEEG.RELAXProcessing.Details.ExtremeOutlierPeriods(segmentEnds-1) == 1);
+    epochedEEG.RELAXProcessing.Details.NoiseMaskFullLength(rejectedSegmentEnds) = NaN;
+    epochedEEG.RELAX.NaNsForExtremeOutlierPeriods(rejectedSegmentEnds) = NaN;
+    epochedEEG.RELAXProcessing.Details.ExtremeOutlierPeriods(rejectedSegmentEnds) = 1;
     % Take record of the proportion of the data marked as an extreme
     % outlier for rejection, and the epochs that were marked:
     epochedEEG.RELAXProcessingExtremeRejections.ProportionExcludedForExtremeOutlier=mean(epochedEEG.RELAXProcessing.Details.ExtremeOutlierPeriods,'omitnan');
