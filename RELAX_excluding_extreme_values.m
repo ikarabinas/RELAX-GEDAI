@@ -176,7 +176,7 @@ function [continuousEEG, epochedEEG] = RELAX_excluding_extreme_values(continuous
     for e=1:size(epochedEEG.RELAXProcessing.Details.MarksForAllChannelKurt,2)
         if epochedEEG.RELAXProcessing.Details.MarksForAllChannelKurt(1,e)==1
             epochedEEG.RELAXProcessing.Details.MarksForBothSingleAndAllChannelKurt(1,e)=1;
-            epochedEEG.RELAXProcessing.Details.AllMethodsExtremeEpochRejections(1,epoch)=1; % Add kurtosis extreme markings to all method marking matrix
+            epochedEEG.RELAXProcessing.Details.AllMethodsExtremeEpochRejections(1,e)=1; % Add kurtosis extreme markings to all method marking matrix
         end
     end
     
