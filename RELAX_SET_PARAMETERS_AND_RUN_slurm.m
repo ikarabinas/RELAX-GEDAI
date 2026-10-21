@@ -143,6 +143,10 @@ addpath('/home/nga4004/tools/eeglab2026.0.0/plugins/Fieldtrip-lite250523/');
 % Specify  RELAX folder location (this toolbox):
 addpath('/home/nga4004/gitRepos/RELAX-GEDAI/');
 
+% GEDAI (local fork with boundary handling), used when RELAX_cfg.Run_GEDAI=1:
+% https://github.com/neil-gallagher/GEDAI-master
+addpath('/home/nga4004/gitRepos/GEDAI-master');
+
 % Put the vendored, boundary-fixed zapline-plus ahead of the EEGLAB plugin copy.
 % Must come after eeglab(), which prepends its own plugin directories.
 RELAX_add_vendored_zapline();
@@ -323,6 +327,17 @@ end
 RELAX_cfg.Perform_targeted_wICA=1; % This is the RELAX recommended artifact reduction method.
 
 RELAX_cfg.Run_GEDAI=0;  % IMK added
+% GEDAI settings; defaults match ~/TMS_response_variability/iTBS_pipeline.m
+RELAX_cfg.GEDAI_LeadfieldPath='/home/nga4004/TMS_response_variability/scratch/eeg_sources_data/full_leadfield/'; % per-participant raw leadfields '<ppt>_leadfield.mat' from generate_leadfield.py
+RELAX_cfg.GEDAI_ArtifactThreshold='auto';
+RELAX_cfg.GEDAI_BroadbandArtifactThreshold='auto-';
+RELAX_cfg.GEDAI_EpochCycles=300;
+RELAX_cfg.GEDAI_LowcutFreq=4.0;
+RELAX_cfg.GEDAI_SlidingWindowSec=[];      % [] = one threshold fitted over the whole file
+RELAX_cfg.GEDAI_EpochENOVAThreshold=[];   % [] = no epoch rejection
+RELAX_cfg.GEDAI_ChanENOVAThreshold=[];    % [] = no channel rejection
+RELAX_cfg.GEDAI_MinEpochSize=1.0;         % seconds; floor on per-wavelet-band epoch length
+RELAX_cfg.GEDAI_Visualize=false;
 
 % Boundary/discontinuity handling. The input files for this pipeline contain boundary
 % events marking periods excised by TMS artifact removal, with only ~8 s of continuous
