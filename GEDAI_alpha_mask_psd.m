@@ -13,6 +13,6 @@
 function [freqs, power] = GEDAI_alpha_mask_psd(data, srate, mask, winSec, maxHz)
 
     paddedMask = [false, mask(:)', false];
-    segments = [find(diff(paddedMask) == 1)', find(diff(paddedMask) == -1)'];
+    segments = [find(diff(paddedMask) == 1)', find(diff(paddedMask) == -1)' - 1];
     [freqs, power] = RELAX_QC_segment_psd(data, srate, segments, winSec, maxHz);
 end

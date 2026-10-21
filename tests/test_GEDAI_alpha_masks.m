@@ -16,6 +16,14 @@ function test_GEDAI_alpha_masks()
     assert(M.valid(7500), '(a) a sample far from any boundary must be valid');
     assert(M.nExcluded == sum(~M.valid), '(a) nExcluded must count the invalid samples');
 
+    edgeSamples = round(opts.edgeSec * srate);
+    assert(edgeSamples == 75);
+    assert(~M.valid(75) && M.valid(76), '(a) the valid region starts exactly 75 samples into the file');
+    assert(M.valid(nSamples - 75) && ~M.valid(nSamples - 74), '(a) the valid region ends exactly 75 samples before the file end');
+    assert(M.valid(2500 - 75) && ~M.valid(2500 - 74), '(a) the valid region ends exactly 75 samples before the boundary at 2500.5');
+    firstValidAfterBoundary = 2501 + find(M.valid(2502:end), 1);
+    assert(firstValidAfterBoundary == 2502 + 75, '(a) the first valid sample after the boundary at 2501.5 is %d', firstValidAfterBoundary);
+
     shortSegment = 3001:3375;
     assert(numel(shortSegment) == 1.5 * srate);
     M = GEDAI_alpha_masks(fixtureWithEvents(srate, nSamples, [3000.5 3375.5], {}, []), opts);
@@ -34,6 +42,10 @@ function test_GEDAI_alpha_masks()
     assert(M.rest(5*srate), '(d) rest must be true before the first train');
     assert(M.rest(40*srate), '(d) rest must be true after the last train plus 8 s');
     assert(all(M.rest <= M.valid), '(d) rest must be ANDed with valid');
+    firstTrainSample = trainLatencies(1);
+    lastRestExcluded = trainLatencies(2) + opts.restTrainPadSec * srate;
+    assert(M.rest(firstTrainSample - 1) && ~M.rest(firstTrainSample), '(d) rest ends exactly at the first train sample');
+    assert(~M.rest(lastRestExcluded) && M.rest(lastRestExcluded + 1), '(d) rest resumes exactly one sample after last train + 8 s');
 
     rng = RandStream('mt19937ar', 'Seed', 1);
     t = (0:nSamples-1) / srate;
@@ -59,7 +71,46 @@ function test_GEDAI_alpha_masks()
     assert(abs(withStep - withoutStep) <= 0.05 * withoutStep, ...
         '(e) a 20 mV step inside the gap changed 1-4 Hz power from %g to %g', withoutStep, withStep);
 
+    runEndingAtLastSampleIsAccepted(srate, opts);
+    runEndsAtSpikeAreExcluded(srate, opts);
+
     fprintf('test_GEDAI_alpha_masks: PASS\n');
+end
+
+function runEndsAtSpikeAreExcluded(srate, opts)
+% A run of true ends at its last true sample. Runs of 749, 999 and 1000 samples at 250 Hz
+% with 2 s windows put a window boundary at, or one sample past, the run end; the single
+% spike sample after each run must never enter a window.
+    nSamples = 6000;
+    stream = RandStream('mt19937ar', 'Seed', 2);
+    data = randn(stream, 3, nSamples);
+    runs = [1 749; 1001 1999; 2501 3500];
+    mask = false(1, nSamples);
+    for r = 1:size(runs, 1)
+        mask(runs(r, 1):runs(r, 2)) = true;
+    end
+    spikeSamples = runs(:, 2) + 1;
+    assert(~any(mask(spikeSamples)));
+    spiked = data;
+    spiked(:, spikeSamples) = 1e6;
+    [~, Pspiked] = GEDAI_alpha_mask_psd(spiked, srate, mask, opts.winSec, opts.maxHz);
+    [~, Pclean] = GEDAI_alpha_mask_psd(data, srate, mask, opts.winSec, opts.maxHz);
+    assert(max(abs(Pspiked(:) - Pclean(:)) ./ Pclean(:)) < 1e-6, ...
+        '(f) a spike one sample after a run end leaked into the PSD (max relative difference %g)', ...
+        max(abs(Pspiked(:) - Pclean(:)) ./ Pclean(:)));
+end
+
+function runEndingAtLastSampleIsAccepted(srate, opts)
+% 1999 samples is 499 + 4*250, so a window starting at 1501 would end at pnts + 1;
+% 2000 samples puts a window exactly on the last sample.
+    for nSamples = [1999 2000]
+        stream = RandStream('mt19937ar', 'Seed', 3);
+        data = randn(stream, 3, nSamples);
+        mask = true(1, nSamples);
+        [~, P] = GEDAI_alpha_mask_psd(data, srate, mask, opts.winSec, opts.maxHz);
+        [~, expected] = RELAX_QC_segment_psd(data(:, 1:nSamples), srate, [1 nSamples], opts.winSec, opts.maxHz);
+        assert(isequal(P, expected), '(g) all-true mask over %d samples must match the whole-file PSD', nSamples);
+    end
 end
 
 function EEG = fixtureWithEvents(srate, nSamples, boundaryLatencies, trainTypes, trainLatencies)
