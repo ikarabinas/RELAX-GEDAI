@@ -1278,31 +1278,35 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     % Run the Generalized Eigenvalue Deartifacting Instrument (GEDAI)
     % pipeline for additional denoising
     if RELAX_cfg.Run_GEDAI==1
-        % Interpolate rejected electrodes prior to running GEDAI
-        % This ensures dimension matching with full-rank participant refCOV
-        EEG = pop_interp(EEG, EEG.allchan, 'spherical');
-        
-        % Load custom refCOV for paticipant file
-        %refCOV_ppt = loadGEDAI_ppt_refCOV(RELAX_cfg);
-
-        % Run GEDAI with the custom refCOV and otherwise default params
-        % Retain the cleaned continous EEG and artifact outputs for later use
-        [EEG, EEGartifacts, sensai_fig] = GEDAI(EEG, 'auto', 12, 0.5, 'custom', true, false, 0.80, 'eeg');
-        
-        % Save figure
-        sensai_plots_dir = fullfile(RELAX_cfg.myPath, 'RELAXProcessed', 'SENSAI_plots');
-        if ~exist(sensai_plots_dir, 'dir')
-            mkdir(sensai_plots_dir);
+        % GEDAI runs on the channels that survived rejection; they are interpolated back
+        % with the rest after cleaning. Build the reference covariance from the
+        % participant's raw (non-average-referenced) leadfield: select the rows for the
+        % channels still present, in EEG channel order, and form refCOV = L*L'. GEDAI
+        % average-references this custom refCOV itself over the surviving channels, so it
+        % must not be referenced here (it would be referenced twice).
+        [L, lf_ch_names] = RELAX_load_ppt_leadfield(RELAX_cfg.GEDAI_LeadfieldPath, RELAX_cfg.filename);
+        eeg_labels = {EEG.chanlocs.labels};
+        [found, loc] = ismember(eeg_labels, lf_ch_names);
+        if ~all(found)
+            missing = eeg_labels(~found);
+            error('RELAX:GEDAIleadfieldChannels', '%d EEG channel(s) not found in leadfield channels (e.g. %s).', ...
+                sum(~found), strjoin(missing(1:min(3, end)), ', '));
         end
+        L = L(loc, :);
+        refCOV = L * L';
 
-        if ~isempty(sensai_fig)
-            saveas(sensai_fig, fullfile(sensai_plots_dir, sprintf('SENSAI_vis_%s.png', FileName)));
-            fprintf('Saving SENSAI plot fig to: %s\n', sensai_plots_dir);
-            close(sensai_fig)
-        else
-            warning('No SENSAI figure generated for %s\n', FileName);
-        end
-   end
+        isBoundary = @(events) arrayfun(@(x) (ischar(x.type) || isstring(x.type)) && strcmp(x.type, 'boundary'), events);
+        nBoundaries_preGEDAI = sum(isBoundary(EEG.event));
+
+        [EEG, EEGartifacts] = GEDAI(EEG, RELAX_cfg.GEDAI_ArtifactThreshold, RELAX_cfg.GEDAI_EpochCycles, ...
+            RELAX_cfg.GEDAI_LowcutFreq, refCOV, true, RELAX_cfg.GEDAI_Visualize, ...
+            RELAX_cfg.GEDAI_EpochENOVAThreshold, RELAX_cfg.GEDAI_ChanENOVAThreshold, [], ...
+            RELAX_cfg.GEDAI_SlidingWindowSec, RELAX_cfg.GEDAI_BroadbandArtifactThreshold, RELAX_cfg.GEDAI_MinEpochSize);
+
+        nBoundaries_postGEDAI = sum(isBoundary(EEG.event));
+        assert(nBoundaries_postGEDAI == nBoundaries_preGEDAI, ...
+            'Boundary count changed during GEDAI denoising: %d before, %d after.', nBoundaries_preGEDAI, nBoundaries_postGEDAI);
+    end
       
     %% COMPUTE CLEANED METRICS:
     if RELAX_cfg.computecleanedmetrics==1    
@@ -1349,7 +1353,7 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
                         CleanedMetrics.SENSAI_lda_accuracy(FileNumber)          = g.visualization_metrics.lda_accuracy;
                         CleanedMetrics.SENSAI_signal_silhouette(FileNumber)     = g.visualization_metrics.signal_silhouette;
                         CleanedMetrics.SENSAI_ideal_power_target_db(FileNumber) = g.visualization_metrics.ideal_power_target_db;
-                     else
+                    elseif RELAX_cfg.GEDAI_Visualize
                         warning('GEDAI ran but visualization_metrics not found for %s\n', FileName);
                     end
                 end
