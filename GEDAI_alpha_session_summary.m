@@ -14,8 +14,9 @@ function S = GEDAI_alpha_session_summary(name, opts)
 %
 %   tmpl: blink and muscle topographies and spectra from the pre-wICA baseline, and their
 %   correlation with removed alpha power (corrBlink, corrMuscle) and with input alpha power
-%   (corrInputAlpha for blink, corrInputAlphaMuscle for muscle). Spectra use one-second
-%   windows (tmpl.specFreq) because a blink window is one second long. The muscle mask is the
+%   (corrBlinkInputAlpha, corrMuscleInputAlpha); tmpl.corrInputAlpha is corr(off alpha, removed alpha) over channels and
+%   is set even when the baseline is misaligned. The blink spectrum uses windows of 2*blinkHalfSec (tmpl.specFreq), the muscle spectrum
+%   opts.winSec (tmpl.muscleSpecFreq). The muscle mask is the
 %   top muscleTopFraction of the 20-80 Hz trace of RELAX_QC_muscle_trace, which stands in for
 %   RELAX_muscle's epoch marks. resid: mean removed power per sample inside / outside the
 %   blink and muscle samples, valid rest samples only. All are NaN when the baseline does
@@ -44,7 +45,7 @@ function S = GEDAI_alpha_session_summary(name, opts)
 
     M = GEDAI_alpha_masks(EEG, opts);
     A = GEDAI_alpha_run(EEG, refCOV, opts);
-    B = GEDAI_alpha_band_summary(A, M, EEG.srate, opts);
+    B = GEDAI_alpha_band_summary(A, M, EEG.srate, opts, EEG.chanlocs);
 
     S.threshold = A.threshold;
     S.enova = A.enova;
@@ -55,9 +56,16 @@ function S = GEDAI_alpha_session_summary(name, opts)
     S.gofInput = GEDAI_alpha_dipfit(B.vecInput, Lref);
     S.gofRemoved = GEDAI_alpha_dipfit(B.vecRemoved, Lref);
 
-    extremes = pop_loadset('filename', [name '_Extremes_Rejected.set'], 'filepath', opts.extremesDir);
-    [baseline, info] = RELAX_QC_baseline(extremes, cleanedFull);
-    [S.tmpl, S.resid] = templatesAndResidual(baseline, info, labels, A, M, B, opts);
+    try
+        extremes = pop_loadset('filename', [name '_Extremes_Rejected.set'], 'filepath', opts.extremesDir);
+        [baseline, info] = RELAX_QC_baseline(extremes, cleanedFull);
+        [S.tmpl, S.resid] = templatesAndResidual(baseline, info, labels, A, M, B, opts, EEG.srate);
+    catch err
+        warning('GEDAI_alpha:templates', '%s: template stage failed: %s', name, err.message);
+        failure = struct('aligned', false, 'reason', err.message);
+        [S.tmpl, S.resid] = templatesAndResidual([], failure, labels, A, M, B, opts, EEG.srate);
+    end
+    S.tmpl.corrInputAlpha = corr(B.band.off(:, 3), B.band.removed(:, 3));
 end
 
 function counts = countsOnly(M, srate, opts)
@@ -72,17 +80,16 @@ function counts = countsOnly(M, srate, opts)
     counts.restIsWholeFile = M.restIsWholeFile;
 end
 
-function [tmpl, resid] = templatesAndResidual(baseline, info, labels, A, M, B, opts)
+function [tmpl, resid] = templatesAndResidual(baseline, info, labels, A, M, B, opts, srate)
     nch = numel(labels);
-    tmplWinSec = 1;
-    nBins = floor(tmplWinSec * baseline.srate / 2) + 1;
-    specFreq = (0:nBins - 1) / tmplWinSec;
-    specFreq = specFreq(specFreq <= opts.maxHz);
+    blinkWinSec = 2 * opts.blinkHalfSec;
+    specFreq = spectrumAxis(blinkWinSec, srate, opts.maxHz);
+    muscleSpecFreq = spectrumAxis(opts.winSec, srate, opts.maxHz);
 
-    tmpl = struct('aligned', info.aligned, 'reason', char(info.reason), 'specFreq', specFreq, ...
+    tmpl = struct('aligned', info.aligned, 'reason', char(info.reason), 'specFreq', specFreq, 'muscleSpecFreq', muscleSpecFreq, ...
         'blinkTopo', nan(nch, 1), 'muscleTopo', nan(nch, 1), ...
-        'blinkSpec', nan(1, numel(specFreq)), 'muscleSpec', nan(1, numel(specFreq)), ...
-        'corrBlink', NaN, 'corrMuscle', NaN, 'corrInputAlpha', NaN, 'corrInputAlphaMuscle', NaN);
+        'blinkSpec', nan(1, numel(specFreq)), 'muscleSpec', nan(1, numel(muscleSpecFreq)), ...
+        'corrBlink', NaN, 'corrMuscle', NaN, 'corrInputAlpha', NaN, 'corrBlinkInputAlpha', NaN, 'corrMuscleInputAlpha', NaN);
     resid = struct('blinkInOut', NaN, 'muscleInOut', NaN);
     if ~info.aligned
         return
@@ -92,7 +99,6 @@ function [tmpl, resid] = templatesAndResidual(baseline, info, labels, A, M, B, o
     baseline.data = baseline.data(order, :);
     baseline.chanlocs = baseline.chanlocs(order);
     baseline.nbchan = nch;
-    srate = baseline.srate;
 
     halfWindow = round(opts.blinkHalfSec * srate);
     peaks = RELAX_QC_blink_peaks(baseline, halfWindow);
@@ -102,7 +108,7 @@ function [tmpl, resid] = templatesAndResidual(baseline, info, labels, A, M, B, o
         for peak = peaks
             blinkMask(peak - halfWindow : peak + halfWindow) = true;
         end
-        [~, blinkPower] = GEDAI_alpha_mask_psd(baseline.data, srate, blinkMask, tmplWinSec, opts.maxHz);
+        [~, blinkPower] = GEDAI_alpha_mask_psd(baseline.data, srate, blinkMask, blinkWinSec, opts.maxHz);
         blinkRows = ismember(labels, opts.blinkElectrodes);
         tmpl.blinkSpec = mean(blinkPower(blinkRows, :), 1);
     end
@@ -111,7 +117,7 @@ function [tmpl, resid] = templatesAndResidual(baseline, info, labels, A, M, B, o
     tmpl.muscleTopo = channelPower;
     usable = M.valid & ~isnan(trace);
     muscleMask = usable & trace >= quantile(trace(usable), 1 - opts.muscleTopFraction);
-    [~, musclePower] = GEDAI_alpha_mask_psd(baseline.data, srate, muscleMask, tmplWinSec, opts.maxHz);
+    [~, musclePower] = GEDAI_alpha_mask_psd(baseline.data, srate, muscleMask, opts.winSec, opts.maxHz);
     [~, strongest] = sort(channelPower, 'descend');
     tmpl.muscleSpec = mean(musclePower(strongest(1:opts.nTopAlpha), :), 1);
 
@@ -119,8 +125,8 @@ function [tmpl, resid] = templatesAndResidual(baseline, info, labels, A, M, B, o
     offAlpha = B.band.off(:, 3);
     tmpl.corrBlink = corr(abs(tmpl.blinkTopo), removedAlpha);
     tmpl.corrMuscle = corr(abs(tmpl.muscleTopo), removedAlpha);
-    tmpl.corrInputAlpha = corr(abs(tmpl.blinkTopo), offAlpha);
-    tmpl.corrInputAlphaMuscle = corr(abs(tmpl.muscleTopo), offAlpha);
+    tmpl.corrBlinkInputAlpha = corr(abs(tmpl.blinkTopo), offAlpha);
+    tmpl.corrMuscleInputAlpha = corr(abs(tmpl.muscleTopo), offAlpha);
 
     removedPower = sum(A.removed .^ 2, 1);
     resid.blinkInOut = inOutRatio(removedPower, blinkMask, M.rest);
@@ -146,4 +152,9 @@ function topo = blinkTopography(data, peaks, srate)
         topo = topo + (atPeak - beforePeak);
     end
     topo = topo / numel(peaks);
+end
+
+function freqs = spectrumAxis(windowSec, srate, maxHz)
+    freqs = (0 : floor(round(windowSec * srate) / 2)) * srate / round(windowSec * srate);
+    freqs = freqs(freqs <= maxHz);
 end

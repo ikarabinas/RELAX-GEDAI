@@ -87,7 +87,7 @@ function extractSession(opts)
     end
     name = names{index};
     cacheFile = fullfile(opts.cacheDir, ['session_' name '.mat']);
-    if isfile(cacheFile)
+    if cachedStatusIsFinal(cacheFile)
         fprintf('%s already cached, skipping.\n', name);
         return
     end
@@ -101,13 +101,19 @@ function extractSession(opts)
         S = struct('name', name, 'participant', strtok(name, '_'), 'status', 'error', 'reason', err.message);
         fprintf(2, '%s\n', getReport(err));
     end
-    save(cacheFile, 'S', '-v7.3');
+    temporaryFile = fullfile(opts.cacheDir, ['tmp_' name '_' getenv('SLURM_JOB_ID') '.mat']);
+    save(temporaryFile, 'S', '-v7.3');
+    movefile(temporaryFile, cacheFile);
     fprintf('%s: status %s\n', name, S.status);
     if strcmp(S.status, 'ok')
         fprintf(['alphaRatioTop %.4f  enova %.4f  threshold %.4f  gofInput %.4f  gofRemoved %.4f\n' ...
                  'corrBlink %.4f  corrMuscle %.4f  nExcluded %d  nSamplesUsed %d\n'], ...
             S.B.alphaRatioTop, S.enova, S.threshold, S.gofInput, S.gofRemoved, ...
             S.tmpl.corrBlink, S.tmpl.corrMuscle, S.M.nExcluded, S.M.nSamplesUsed);
+        fprintf(['iaf %.2f (atEdge %d)  iafPeak %.2f (atEdge %d)  alphaRatioPeak %.4f  corrInputAlpha %.4f\n' ...
+                 'topAlphaCentroid %s  topAlphaPeakCentroid %s\n'], ...
+            S.B.iaf, S.B.iafAtEdge, S.B.iafPeak, S.B.iafPeakAtEdge, S.B.alphaRatioPeak, S.tmpl.corrInputAlpha, ...
+            mat2str(S.B.topAlphaCentroid, 4), mat2str(S.B.topAlphaPeakCentroid, 4));
     else
         fprintf('reason: %s\n', S.reason);
     end
@@ -118,15 +124,31 @@ function printStatus(opts)
     statuses = cell(1, numel(files));
     reasons = cell(1, numel(files));
     for k = 1:numel(files)
-        loaded = load(fullfile(files(k).folder, files(k).name), 'S');
-        statuses{k} = loaded.S.status;
-        reasons{k} = loaded.S.reason;
+        try
+            loaded = load(fullfile(files(k).folder, files(k).name), 'S');
+            statuses{k} = loaded.S.status;
+            reasons{k} = loaded.S.reason;
+        catch err
+            statuses{k} = 'unreadable';
+            reasons{k} = err.message;
+        end
     end
-    for status = {'ok', 'skipped', 'error'}
+    for status = {'ok', 'skipped', 'error', 'unreadable'}
         fprintf('%-8s %d\n', status{1}, sum(strcmp(statuses, status{1})));
     end
     fprintf('cached   %d of %d eligible sessions\n', numel(files), numel(listSessions(opts, false)));
     for k = find(~strcmp(statuses, 'ok'))
         fprintf('  %s [%s]: %s\n', erase(files(k).name, {'session_', '.mat'}), statuses{k}, reasons{k});
+    end
+end
+
+function final = cachedStatusIsFinal(cacheFile)
+    final = false;
+    if ~isfile(cacheFile), return, end
+    try
+        loaded = load(cacheFile, 'S');
+        final = ismember(loaded.S.status, {'ok', 'skipped'});
+    catch
+        final = false;
     end
 end
