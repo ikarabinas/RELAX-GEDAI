@@ -5,11 +5,12 @@ function gedaiDir = GEDAI_alpha_paths()
 %
 %   Removes every path entry under gitRepos/GEDAI-master (the mid-merge checkout), adds the
 %   copy at ~/scratch/gedai_review/alpha_figures/GEDAI-be4e13a with its subfolders, and returns
-%   the folder holding GEDAI.m in the form `which` reports it.
+%   the canonical copy folder, after asserting that `which('GEDAI')` resolves inside it.
 
-    copyDir = fullfile(getenv('HOME'), 'scratch', 'gedai_review', 'alpha_figures', 'GEDAI-be4e13a');
-    assert(isfile(fullfile(copyDir, 'GEDAI.m')), 'GEDAI_alpha:missingCopy', ...
-        'GEDAI copy not found at %s', copyDir);
+    linkedDir = fullfile(getenv('HOME'), 'scratch', 'gedai_review', 'alpha_figures', 'GEDAI-be4e13a');
+    assert(isfile(fullfile(linkedDir, 'GEDAI.m')), 'GEDAI_alpha:missingCopy', ...
+        'GEDAI copy not found at %s', linkedDir);
+    copyDir = char(java.io.File(linkedDir).getCanonicalPath());
 
     entries = strsplit(path, pathsep);
     stale = entries(contains(entries, 'gitRepos/GEDAI-master'));
@@ -18,5 +19,8 @@ function gedaiDir = GEDAI_alpha_paths()
     end
 
     addpath(genpath(copyDir), '-begin');
-    gedaiDir = fileparts(which('GEDAI'));
+    if ~startsWith(which('GEDAI'), copyDir)
+        error('GEDAI_alpha:wrongGEDAI', 'GEDAI resolves to %s, not the copy in %s', which('GEDAI'), copyDir);
+    end
+    gedaiDir = copyDir;
 end
