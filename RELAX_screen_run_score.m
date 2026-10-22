@@ -5,7 +5,8 @@
 %   >> [screen, meta] = RELAX_screen_run_score(opts);
 %
 % opts: built by RELAX_residual_screen (.myPath, .outputFolderName, .outDir, .cutoff,
-% .sampleSize, .seed). A cleaned file whose header cannot be read keeps its muscle metrics,
+% .sampleSize, .seed). A cleaned file whose header cannot be read, or lacks EEG.allchan or
+% EEG.RELAX.ListOfChannelsAfterRejections, keeps its muscle metrics,
 % gets NaN BlinkRatio and NInterpolated (so it is unscreened), and the error message goes in
 % SheetMessage. See RELAX_screen_score_table for the columns of screen and meta.
 
@@ -58,6 +59,12 @@ function [header, message] = loadHeader(cleanedPath)
         header = pop_loadset('filename', char(cleanedPath), 'loadmode', 'info');
     catch err
         message = string(err.message);
+        return
+    end
+    if ~isfield(header, 'allchan') || isempty(header.allchan)
+        message = "header has no EEG.allchan";
+    elseif ~isfield(header, 'RELAX') || ~isfield(header.RELAX, 'ListOfChannelsAfterRejections')
+        message = "header has no EEG.RELAX.ListOfChannelsAfterRejections";
     end
 end
 
