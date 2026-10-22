@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=relax-qc-figures
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=6
+#SBATCH --mem=120G
 #SBATCH --time=12:00:00
 #SBATCH --partition=scu-cpu
 #SBATCH --output=logs/qc_figures_%j.log

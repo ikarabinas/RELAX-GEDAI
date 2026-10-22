@@ -91,7 +91,7 @@ function m = groupMean(summaries, field, reference)
 end
 
 function mapRow(layout, row, maps, chanlocs, rowLabel, style)
-    titles = ["Before wICA", "Cleaned", "Removed by wICA"];
+    titles = ["Before wICA", "Cleaned", "Removed by wICA + GEDAI"];
     limit = max(abs([maps{:}]), [], 'all');
     if ~(limit > 0), limit = 1; end
     fig = ancestor(layout, 'figure');

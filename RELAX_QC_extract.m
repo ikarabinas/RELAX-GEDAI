@@ -10,7 +10,7 @@
 
 function cache = RELAX_QC_extract(opts)
 
-    processed = fullfile(opts.myPath, 'RELAXProcessed');
+    processed = fullfile(opts.myPath, opts.outputFolderName);
     [T, cfgs] = RELAX_QC_load_tables(fullfile(processed, 'PerParticipantStats'), fullfile(processed, 'Cleaned_Data'));
     cellfun(@RELAX_QC_check_config, values(cfgs));
     if ~isempty(opts.onlyFiles)
@@ -23,21 +23,18 @@ function cache = RELAX_QC_extract(opts)
     inputs = inputs(~contains({inputs.folder}, 'RELAXProcessed'));
 
     n = height(T);
-    checkpointEvery = 10;
     summaries = repmat(RELAX_QC_empty_summary(), n, 1);
-    for i = 1:n
-        if T.Outcome(i) ~= "cleaned", continue, end
-        try
-            summaries(i) = RELAX_QC_file_summary(RELAX_QC_file_paths(processed, inputs, T.File(i)), cfgs(char(T.Participant(i))), opts);
-        catch err
-            summaries(i).status = "skipped";
-            summaries(i).skipReason = string(err.message);
-            warning('RELAX_QC:fileSkipped', '%s skipped: %s', T.File(i), err.message);
-        end
-        fprintf('RELAX_QC_extract %d/%d %s: %s %s\n', i, n, T.File(i), summaries(i).status, summaries(i).skipReason);
-        if mod(i, checkpointEvery) == 0 && i < n
-            saveCache(opts, cfgs, T, summaries, emptyPicks(), emptyExamples(), true);
-        end
+    todo = find(T.Outcome == "cleaned")';
+    files = T.File(todo);
+    fileCfgs = arrayfun(@(i) cfgs(char(T.Participant(i))), todo, 'UniformOutput', false);
+    startWorkerPool(numel(todo));
+    results = cell(numel(todo), 1);
+    parfor k = 1:numel(todo)
+        results{k} = summariseOneFile(processed, inputs, files(k), fileCfgs{k}, opts);
+    end
+    for k = 1:numel(todo)
+        summaries(todo(k)) = results{k};
+        fprintf('RELAX_QC_extract %d/%d %s: %s %s\n', todo(k), n, files(k), results{k}.status, results{k}.skipReason);
     end
 
     unusable = [summaries.status] ~= "ok";
@@ -75,4 +72,29 @@ function saveCache(opts, cfgs, T, summaries, picks, examples, partial)
     cache.picks = picks;
     cache.examples = examples;
     save(opts.cachePath, 'cache', '-v7.3');
+end
+
+function summary = summariseOneFile(processed, inputs, file, cfg, opts)
+    try
+        summary = RELAX_QC_file_summary(RELAX_QC_file_paths(processed, inputs, file), cfg, opts);
+    catch err
+        summary = RELAX_QC_empty_summary();
+        summary.status = "skipped";
+        summary.skipReason = string(err.message);
+        warning('RELAX_QC:fileSkipped', '%s skipped: %s', file, err.message);
+    end
+end
+
+% Each SLURM job needs its own job storage, or concurrent pools clobber each other.
+function startWorkerPool(nFiles)
+    if ~isempty(gcp('nocreate')) || nFiles == 0, return, end
+    nWorkers = min(nFiles, max(1, str2double(getenv('SLURM_CPUS_PER_TASK'))));
+    if isnan(nWorkers), return, end
+    cluster = parcluster('local');
+    storage = fullfile(getenv('TMPDIR'), sprintf('qc_extract_%s', getenv('SLURM_JOB_ID')));
+    if ~isempty(getenv('TMPDIR')) && ~isempty(getenv('SLURM_JOB_ID'))
+        mkdir(storage);
+        cluster.JobStorageLocation = storage;
+    end
+    parpool(cluster, nWorkers);
 end

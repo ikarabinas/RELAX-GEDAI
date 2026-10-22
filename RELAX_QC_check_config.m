@@ -6,14 +6,17 @@
 %
 % The baseline is valid only when nothing but extreme-period excision, average reference
 % and targeted wICA ran after Extremes_Rejected was saved, and the cleaned file was
-% interpolated back to the full montage. Errors RELAX_QC:unsupportedConfig otherwise.
+% interpolated back to the full montage. GEDAI is allowed only in broadband-only mode,
+% which runs after targeted wICA and so leaves the baseline valid. Errors RELAX_QC:unsupportedConfig otherwise.
 
 function RELAX_QC_check_config(cfg)
     problems = strings(0, 1);
     if any([field(cfg, 'Do_MWF_Once', 0), field(cfg, 'Do_MWF_Twice', 0), field(cfg, 'Do_MWF_Thrice', 0)] ~= 0)
         problems(end+1) = "MWF is on";
     end
-    if field(cfg, 'Run_GEDAI', 0) ~= 0, problems(end+1) = "GEDAI is on"; end
+    if field(cfg, 'Run_GEDAI', 0) ~= 0 && ~field(cfg, 'GEDAI_BroadbandOnly', false)
+        problems(end+1) = "GEDAI is on with its wavelet bands (only broadband-only GEDAI runs after the baseline's wICA step without altering it)";
+    end
     if ~strcmp(field(cfg, 'LowPassFilterBeforeMWF', ''), 'yes')
         problems(end+1) = "the low-pass runs after Extremes_Rejected is saved (LowPassFilterBeforeMWF is not 'yes')";
     end

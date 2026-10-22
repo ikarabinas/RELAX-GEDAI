@@ -20,5 +20,15 @@ function test_RELAX_QC_check_config()
             assert(contains(err.message, 'm001'), 'error names the participant');
         end
     end
+
+    gedai = good; gedai.Run_GEDAI = 1; gedai.GEDAI_BroadbandOnly = true;
+    RELAX_QC_check_config(gedai);   % broadband-only GEDAI runs after wICA, so the baseline holds
+    gedai.GEDAI_BroadbandOnly = false;
+    try
+        RELAX_QC_check_config(gedai);
+        error('test:noError', 'GEDAI with wavelet bands should be rejected');
+    catch err
+        assert(strcmp(err.identifier, 'RELAX_QC:unsupportedConfig'), 'wrong error: %s', err.message);
+    end
     fprintf('test_RELAX_QC_check_config: PASS\n');
 end

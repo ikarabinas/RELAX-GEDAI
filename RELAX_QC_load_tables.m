@@ -12,7 +12,7 @@
 %   T    - one row per file named in any RELAX_cfg_<participant>.mat. RawMetrics and
 %          CleanedMetrics are indexed by FileNumber, i.e. by position in that
 %          participant's RELAX_cfg.files; the covariate tables are keyed by aFileName.
-%          Outcome is 'cleaned' if <File>_RELAX.set exists, else the Outcome recorded in
+%          Outcome is 'cleaned' if <File>_RELAX.set or <File>_RELAX_GEDAI.set exists, else the Outcome recorded in
 %          RELAX_unprocessed_files_<participant>.mat, else 'notProcessed'.
 %   cfgs - containers.Map, participant tag -> that participant's RELAX_cfg
 %
@@ -49,7 +49,7 @@ function [T, cfgs] = RELAX_QC_load_tables(statsDir, cleanedDir)
                   'VariableNames', {'File', 'Participant', 'FileNumber', 'Outcome', 'Message'});
 
         for i = 1:n
-            if isfile(fullfile(cleanedDir, files(i) + "_RELAX.set"))
+            if isfile(fullfile(cleanedDir, files(i) + RELAX_QC_cleaned_suffix(cleanedDir, files(i))))
                 R.Outcome(i) = "cleaned";
             elseif istable(unprocessed)
                 hit = find(string(cellfun(@baseName, unprocessed.File, 'UniformOutput', false)) == files(i), 1, 'last');
@@ -97,8 +97,8 @@ function [T, cfgs] = RELAX_QC_load_tables(statsDir, cleanedDir)
 end
 
 function warnAboutCleanedFilesMissingFrom(T, cleanedDir)
-    onDisk = dir(fullfile(cleanedDir, '*_RELAX.set'));
-    missing = setdiff(string(regexprep({onDisk.name}, '_RELAX\.set$', '')), T.File);
+    onDisk = dir(fullfile(cleanedDir, '*_RELAX*.set'));
+    missing = setdiff(string(regexprep({onDisk.name}, '_RELAX(_GEDAI)?\.set$', '')), T.File);
     if isempty(missing), return, end
     warning('RELAX_QC:filesNotInTables', ['%d cleaned file(s) in %s are not in any RELAX_cfg.files (an incremental rerun saves only ' ...
             'its own list), so they are left out; first: %s'], numel(missing), cleanedDir, strjoin(missing(1:min(3, end)), ', '));

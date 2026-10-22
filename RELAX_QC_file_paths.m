@@ -10,5 +10,5 @@ function paths = RELAX_QC_file_paths(processed, inputs, file)
     if isempty(hit), error('RELAX_QC:missingInput', 'No input file %s.set under myPath', file); end
     paths.input    = fullfile(inputs(hit).folder, inputs(hit).name);
     paths.extremes = char(fullfile(processed, 'Extremes_Rejected', file + "_Extremes_Rejected.set"));
-    paths.cleaned  = char(fullfile(processed, 'Cleaned_Data', file + "_RELAX.set"));
+    paths.cleaned  = char(fullfile(processed, 'Cleaned_Data', file + RELAX_QC_cleaned_suffix(fullfile(processed, 'Cleaned_Data'), file)));
 end
