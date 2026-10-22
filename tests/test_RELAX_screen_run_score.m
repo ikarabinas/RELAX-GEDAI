@@ -13,6 +13,7 @@ function test_RELAX_screen_run_score()
     readme = fileread(fullfile(outDir, 'README.md'));
     assert(contains(readme, "cutoff 3") && contains(readme, "cannot flag any file in this run"));
     assert(contains(readme, "1.4826 * MAD"), 'README explains the scale columns');
+    assert(contains(readme, "Open rings mark electrodes that were interpolated") && contains(readme, "3 s each"), 'README guide describes the drawn sheet');
     assert(~isempty(meta.zeroScaleMetrics));
     csv = readtable(fullfile(outDir, 'residual_screen.csv'));
     assert(isnumeric(csv.InReviewSample) && all(ismember(csv.InReviewSample, [0 1])));
