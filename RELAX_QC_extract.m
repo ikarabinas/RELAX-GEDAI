@@ -27,9 +27,9 @@ function cache = RELAX_QC_extract(opts)
     todo = find(T.Outcome == "cleaned")';
     files = T.File(todo);
     fileCfgs = arrayfun(@(i) cfgs(char(T.Participant(i))), todo, 'UniformOutput', false);
-    startWorkerPool(numel(todo));
+    maxWorkers = startWorkerPool(numel(todo));
     results = cell(numel(todo), 1);
-    parfor k = 1:numel(todo)
+    parfor (k = 1:numel(todo), maxWorkers)
         results{k} = summariseOneFile(processed, inputs, files(k), fileCfgs{k}, opts);
     end
     for k = 1:numel(todo)
@@ -85,11 +85,14 @@ function summary = summariseOneFile(processed, inputs, file, cfg, opts)
     end
 end
 
-% Each SLURM job needs its own job storage, or concurrent pools clobber each other.
-function startWorkerPool(nFiles)
-    if ~isempty(gcp('nocreate')) || nFiles == 0, return, end
+% Each SLURM job needs its own job storage, or concurrent pools clobber each other. Returns the
+% most workers parfor may use: 0 (run serially, no pool) outside SLURM, Inf with a pool already open.
+function maxWorkers = startWorkerPool(nFiles)
+    maxWorkers = Inf;
+    if ~isempty(gcp('nocreate')), return, end
+    maxWorkers = 0;
     nWorkers = str2double(getenv('SLURM_CPUS_PER_TASK'));
-    if isnan(nWorkers), return, end
+    if nFiles == 0 || isnan(nWorkers), return, end
     nWorkers = min(nFiles, max(1, nWorkers));
     cluster = parcluster('local');
     storage = fullfile(getenv('TMPDIR'), sprintf('qc_extract_%s', getenv('SLURM_JOB_ID')));
@@ -98,4 +101,5 @@ function startWorkerPool(nFiles)
         cluster.JobStorageLocation = storage;
     end
     parpool(cluster, nWorkers);
+    maxWorkers = nWorkers;
 end

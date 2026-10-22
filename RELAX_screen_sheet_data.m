@@ -99,16 +99,15 @@ end
 function [windows, relativePower] = muscleWindows(cleanedEEG, baseline, filtered, trace, shownBlinkLabels, blinkLabels, opts)
     srate = cleanedEEG.srate;
     segments = RELAX_get_segments(cleanedEEG);
-    times = (0:cleanedEEG.pnts - 1) / srate;
     ranked = traceWithoutSegmentEdges(trace, segments, round(opts.muscleSmoothSeconds * srate));
-    centres = RELAX_screen_top_separated(times, ranked, opts.nWindows, opts.windowSeconds);
+    windowCentres = windowCentresInsideSegments(segments, cleanedEEG.pnts, srate, opts.windowSeconds);
+    centres = RELAX_screen_top_separated(windowCentres, ranked, opts.nWindows, opts.windowSeconds);
     windows = repmat(RELAX_QC_empty_window("muscle"), 1, opts.nWindows);
     relativePower = nan(1, opts.nWindows);
     typicalPower = median(trace, 'omitnan');
     for k = 1:numel(centres)
-        windowCentre = centreInsideSegment(centres(k), segments, srate, opts.windowSeconds);
-        windows(k) = filledWindow("muscle", windowCentre, cleanedEEG, baseline, filtered, shownBlinkLabels, blinkLabels, opts);
-        relativePower(k) = trace(round(centres(k) * srate) + 1) / typicalPower;
+        windows(k) = filledWindow("muscle", centres(k), cleanedEEG, baseline, filtered, shownBlinkLabels, blinkLabels, opts);
+        relativePower(k) = max(ranked(windowCentres == centres(k))) / typicalPower;
     end
     if all(isnan(ranked))
         [windows.note] = deal("No segment long enough to measure muscle power");
@@ -129,14 +128,17 @@ function ranked = traceWithoutSegmentEdges(trace, segments, widthSamples)
     end
 end
 
-function centre = centreInsideSegment(centre, segments, srate, windowSeconds)
-% RELAX_QC_fill_window spans 2 * half + 1 samples around the centre sample.
+function centres = windowCentresInsideSegments(segments, nSamples, srate, windowSeconds)
+% Where RELAX_QC_fill_window must be centred for each sample's burst to get a window that stays inside
+% the segment (2 * half + 1 samples). Separating these, not the burst times, keeps shown windows apart.
     half = round(windowSeconds / 2 * srate);
-    middle = round(centre * srate) + 1;
-    s = find(segments(:, 1) <= middle & segments(:, 2) >= middle, 1);
-    first = segments(s, 1); last = segments(s, 2);
-    if last - first < 2 * half, return, end
-    centre = (min(max(middle, first + half), last - half) - 1) / srate;
+    centres = ((1:nSamples) - 1) / srate;
+    for s = 1:size(segments, 1)
+        first = segments(s, 1); last = segments(s, 2);
+        if last - first < 2 * half, continue, end
+        span = first:last;
+        centres(span) = (min(max(span, first + half), last - half) - 1) / srate;
+    end
 end
 
 function [windows, residual] = blinkWindows(cleanedEEG, baseline, filtered, peaks, shownBlinkLabels, blinkLabels, rankedBlinkLabels, opts)

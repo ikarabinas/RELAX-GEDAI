@@ -37,9 +37,9 @@ function screen = RELAX_screen_run_sheets(opts, onlyFiles)
     fileOpts = arrayfun(@(file) withBlinkFallback(opts, T, file), files, 'UniformOutput', false);
     rows = arrayfun(@(row) screen(row, :), selected, 'UniformOutput', false);
 
-    startWorkerPool(n);
+    maxWorkers = startWorkerPool(n);
     outcomes = cell(n, 1);
-    parfor k = 1:n
+    parfor (k = 1:n, maxWorkers)
         outcomes{k} = drawOneSheet(processed, rows{k}, screen, meta, fileCfgs{k}, fileOpts{k}, reviewDir);
     end
 
@@ -114,11 +114,14 @@ function message = messageAfter(previousStatus, previousMessage, outcome)
     end
 end
 
-% Each SLURM job needs its own job storage, or concurrent pools clobber each other.
-function startWorkerPool(nFiles)
-    if ~isempty(gcp('nocreate')) || nFiles == 0, return, end
+% Each SLURM job needs its own job storage, or concurrent pools clobber each other. Returns the
+% most workers parfor may use: 0 (run serially, no pool) outside SLURM, Inf with a pool already open.
+function maxWorkers = startWorkerPool(nFiles)
+    maxWorkers = Inf;
+    if ~isempty(gcp('nocreate')), return, end
+    maxWorkers = 0;
     nWorkers = str2double(getenv('SLURM_CPUS_PER_TASK'));
-    if isnan(nWorkers), return, end
+    if nFiles == 0 || isnan(nWorkers), return, end
     nWorkers = min(nFiles, max(1, nWorkers));
     cluster = parcluster('local');
     storage = fullfile(getenv('TMPDIR'), sprintf('residual_screen_%s', getenv('SLURM_JOB_ID')));
@@ -127,4 +130,5 @@ function startWorkerPool(nFiles)
         cluster.JobStorageLocation = storage;
     end
     parpool(cluster, nWorkers);
+    maxWorkers = nWorkers;
 end

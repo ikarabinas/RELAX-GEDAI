@@ -49,9 +49,7 @@ function test_muscle_windows_stay_off_segment_edges(loadedCfg)
     rng(7);
     srate = 500; seconds = 20; nChan = 32;
     chanlocs = make_qc_chanlocs(nChan);
-    eeg = eeg_emptyset(); eeg.srate = srate; eeg.nbchan = nChan; eeg.pnts = seconds * srate;
-    eeg.trials = 1; eeg.xmin = 0; eeg.chanlocs = chanlocs;
-    eeg.data = randn(nChan, eeg.pnts);
+    eeg = syntheticEeg(srate, seconds, chanlocs);
     secondsToSamples = @(t0, t1) round(t0 * srate) + 1 : round(t1 * srate);
     carrier = @(span, hz) sin(2 * pi * hz * (span - 1) / srate);
     burstSpan = secondsToSamples(10, 13.5);
@@ -59,11 +57,6 @@ function test_muscle_windows_stay_off_segment_edges(loadedCfg)
     eeg.data(:, burstSpan) = eeg.data(:, burstSpan) + 20 * envelope .* carrier(burstSpan, 50);
     transientSpan = secondsToSamples(9.8, 10);
     eeg.data(:, transientSpan) = eeg.data(:, transientSpan) + 35 * carrier(transientSpan, 50);
-    eeg.event = struct('type', 'boundary', 'latency', 10 * srate + 0.5, 'duration', 0);
-    eeg = eeg_checkset(eeg);
-    eeg.allchan = chanlocs;
-    eeg.RELAX.ListOfChannelsAfterRejections = {chanlocs.labels};
-
     folder = tempname; mkdir(folder); cleanup = onCleanup(@() rmdir(folder, 's'));
     pop_saveset(eeg, 'filename', 'synthetic_RELAX.set', 'filepath', folder);
     paths = struct('cleaned', fullfile(folder, 'synthetic_RELAX.set'), 'extremes', fullfile(folder, 'absent.set'));
@@ -75,6 +68,15 @@ function test_muscle_windows_stay_off_segment_edges(loadedCfg)
     assert(strongest.available && abs(mean(strongest.t) - 11.2) < 0.5, 'the strongest window is the mid-segment burst, not the transient at 9.8-10 s');
     assert(strongest.t(1) >= 10 - 1 / srate && isempty(strongest.boundaries), 'the burst window starts inside its segment and crosses no boundary');
 
+    crowded = syntheticEeg(srate, seconds, chanlocs);
+    crowded = addBurst(crowded, 1.2, 20);
+    crowded = addBurst(crowded, 4.2, 18);
+    pop_saveset(crowded, 'filename', 'crowded_RELAX.set', 'filepath', folder);
+    twoBursts = RELAX_screen_sheet_data(struct('cleaned', fullfile(folder, 'crowded_RELAX.set'), 'extremes', paths.extremes), loadedCfg, opts);
+    shownCentres = arrayfun(@(w) mean(w.t), twoBursts.muscle([twoBursts.muscle.available]));
+    assert(numel(shownCentres) >= 2 && min(pdist2Seconds(shownCentres)) >= 3 - 2 / srate, ...
+           'bursts 3 s apart that overlap once slid inside the segment are not both chosen');
+
     blinkLabelsPresent = intersect(RELAX_screen_blink_labels(loadedCfg, NaN), {chanlocs.labels}, 'stable');
     assert(~isempty(blinkLabelsPresent), 'the synthetic montage must contain a blink electrode');
     eeg.RELAX.ListOfChannelsAfterRejections = setdiff({chanlocs.labels}, blinkLabelsPresent, 'stable');
@@ -84,6 +86,29 @@ function test_muscle_windows_stay_off_segment_edges(loadedCfg)
     assert(isequal(sort(interpolated.interpolatedLabels(:)), sort(blinkLabelsPresent(:))) && ~any([interpolated.blink.available]), ...
            'blinks are not ranked on interpolated electrodes');
     assert(all(contains([interpolated.blink.note], "interpolated")));
+end
+
+function eeg = syntheticEeg(srate, seconds, chanlocs)
+% Two segments of seconds / 2 each, white noise, every channel kept.
+    eeg = eeg_emptyset(); eeg.srate = srate; eeg.nbchan = numel(chanlocs); eeg.pnts = seconds * srate;
+    eeg.trials = 1; eeg.xmin = 0; eeg.chanlocs = chanlocs;
+    eeg.data = randn(eeg.nbchan, eeg.pnts);
+    eeg.event = struct('type', 'boundary', 'latency', eeg.pnts / 2 + 0.5, 'duration', 0);
+    eeg = eeg_checkset(eeg);
+    eeg.allchan = chanlocs;
+    eeg.RELAX.ListOfChannelsAfterRejections = {chanlocs.labels};
+end
+
+function eeg = addBurst(eeg, centreSeconds, amplitude)
+    span = max(1, round((centreSeconds - 1.5) * eeg.srate) + 1) : round((centreSeconds + 1.5) * eeg.srate);
+    seconds = (span - 1) / eeg.srate;
+    envelope = exp(-((seconds - centreSeconds) / 0.6).^2);
+    eeg.data(:, span) = eeg.data(:, span) + amplitude * envelope .* sin(2 * pi * 50 * seconds);
+end
+
+function separations = pdist2Seconds(centres)
+    differences = abs(centres(:) - centres(:)');
+    separations = differences(triu(true(numel(centres)), 1));
 end
 
 function assertConfigRefused(cfg)

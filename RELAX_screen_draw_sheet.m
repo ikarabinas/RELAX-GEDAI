@@ -212,14 +212,15 @@ function markInterpolatedTicks(ax, interpolatedLabels)
 end
 
 function drawScaleBar(ax, spacing, style)
-% A vertical bar at the right of the lowest trace's gap, as long as the 1-2-5 value just under one trace spacing.
+% A vertical bar at the bottom left, as long as the 1-2-5 value just under one trace spacing. The bottom
+% right belongs to RELAX_QC_mark_clipped's note.
     barMicrovolts = oneTwoFiveBelow(spacing);
     xRange = xlim(ax);
-    x = xRange(2) - 0.01 * diff(xRange);
+    x = xRange(1) + 0.01 * diff(xRange);
     bottom = -1.1 * spacing;
     line(ax, [x x], bottom + [0 barMicrovolts], 'Color', style.ink, 'LineWidth', 2, 'HandleVisibility', 'off');
-    text(ax, x - 0.006 * diff(xRange), bottom + barMicrovolts / 2, sprintf('%g µV', barMicrovolts), 'FontSize', style.fontSize, ...
-         'Color', style.ink, 'HorizontalAlignment', 'right', 'VerticalAlignment', 'middle');
+    text(ax, x + 0.006 * diff(xRange), bottom + barMicrovolts / 2, sprintf('%g µV', barMicrovolts), 'FontSize', style.fontSize, ...
+         'Color', style.ink, 'HorizontalAlignment', 'left', 'VerticalAlignment', 'middle');
 end
 
 function value = oneTwoFiveBelow(x)
