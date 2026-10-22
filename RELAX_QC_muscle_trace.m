@@ -1,15 +1,16 @@
 % RELAX_QC_muscle_trace() - Where in a recording muscle activity is strongest.
 %
 % Usage:
-%   >> [trace, channelPower] = RELAX_QC_muscle_trace(EEG, windowSeconds);
+%   >> [trace, channelPower, filtered] = RELAX_QC_muscle_trace(EEG, windowSeconds);
 %
 % Outputs:
 %   trace        - [1 x pnts] channel-mean 20–80 Hz power, moving-averaged over
 %                  windowSeconds within each boundary segment (never across one);
 %                  NaN in segments too short to filter or smooth
 %   channelPower - [nChannels x 1] each channel's mean 20–80 Hz power
+%   filtered     - the 20–80 Hz band-passed EEG the two outputs above are computed from
 
-function [trace, channelPower] = RELAX_QC_muscle_trace(EEG, windowSeconds)
+function [trace, channelPower, filtered] = RELAX_QC_muscle_trace(EEG, windowSeconds)
 
     filtered = RELAX_filtbutter(EEG, 20, 80, 4, 'bandpass', 'acausal', true);
 

@@ -16,7 +16,7 @@ function test_RELAX_QC_muscle_trace()
     EEG = eeg_checkset(EEG);
 
     % A 0.5 s window is shorter than the 1 s burst, so the smoothed peak must fall inside it
-    [trace, channelPower] = RELAX_QC_muscle_trace(EEG, 0.5);
+    [trace, channelPower, filtered] = RELAX_QC_muscle_trace(EEG, 0.5);
     assert(numel(trace) == pnts && ~any(isnan(trace(1:pnts-1))), 'one finite value per sample outside the 1-sample segment');
     assert(isnan(trace(pnts)), 'a 1-sample segment has no trace');
     [~, peak] = max(trace);
@@ -24,6 +24,9 @@ function test_RELAX_QC_muscle_trace()
     assert(trace(5001) < trace(5000), 'segment 1''s edge burst must not smooth into segment 2');
     [~, loudest] = max(channelPower);
     assert(loudest == 2 && max(channelPower) < 1e3, 'channel 2 carries the strongest burst, and the lone huge sample does not enter channelPower');
+
+    expected = RELAX_filtbutter(EEG, 20, 80, 4, 'bandpass', 'acausal', true);
+    assert(isequal(size(filtered.data), size(EEG.data)) && isequal(filtered.data, expected.data), 'filtered is the 20-80 Hz band-passed EEG');
 
     fprintf('test_RELAX_QC_muscle_trace: PASS\n');
 end

@@ -64,8 +64,6 @@ function sentence = referencePopSentence(cache)
     end
 end
 
-function seconds = minimumShadeSeconds(), seconds = 0.05; end
-
 function is = isPopKind(w), is = any(w.kind == ["pop", "popKept"]); end
 
 function label = removedLabel(w, isPop)
@@ -74,59 +72,15 @@ function label = removedLabel(w, isPop)
 end
 
 function drawWindow(traceAx, removedAx, w, beforeName, afterName, style)
-    before = w.before; after = w.after;
-    centre = median(before, 2) * ~isPopKind(w);
-    spacing = max(8 * median(mad(before, 1, 2)), eps);
-    offsets = (size(before, 1) - 1:-1:0)' * spacing;
-    yRange = [-1.5 * spacing, max(offsets) + 3 * spacing];
-
-    hold(traceAx, 'on');
-    shadeExcised(traceAx, w.excised, yRange, true, style);
-    shade(traceAx, w.shade, yRange, style);
-    hBefore = plot(traceAx, w.t, before - centre + offsets, 'Color', style.before, 'LineWidth', style.thin);
-    hAfter  = plot(traceAx, w.t, after - centre + offsets, 'Color', style.cleaned, 'LineWidth', style.thin);
-    for b = w.boundaries, xline(traceAx, b, '--', 'Color', style.ink, 'LineWidth', 0.8, 'HandleVisibility', 'off'); end
-    [ticks, order] = sort(offsets);
-    yticks(traceAx, ticks); yticklabels(traceAx, w.channels(order));
-    ylim(traceAx, yRange); xlim(traceAx, [w.t(1) w.t(end)]);
-    traceAx.XTickLabel = []; traceAx.FontSize = style.fontSize; traceAx.TickLabelInterpreter = 'none';
-    legend(traceAx, [hBefore(1) hAfter(1)], {beforeName, afterName}, 'Location', 'northoutside', ...
-           'Orientation', 'horizontal', 'Box', 'off', 'FontSize', style.fontSize - 1);
-    traceStacked = [before - centre + offsets; after - centre + offsets];
-    markClipped(traceAx, any(traceStacked(:) < yRange(1) | traceStacked(:) > yRange(2)), style);
+    RELAX_QC_draw_traces(traceAx, w, beforeName, afterName, style);
 
     hold(removedAx, 'on');
     isPop = isPopKind(w);
     [removedTraces, removedRange, removedClipped] = RELAX_QC_removed_strip(w.removed, isPop);
-    shadeExcised(removedAx, w.excised, removedRange, false, style);
-    shade(removedAx, w.shade, removedRange, style);
+    RELAX_QC_shade_window(removedAx, w, removedRange, false, style);
     plot(removedAx, w.t, removedTraces', 'Color', [style.removed 0.6], 'LineWidth', style.thin);
     for b = w.boundaries, xline(removedAx, b, '--', 'Color', style.ink, 'LineWidth', 0.8); end
     xlim(removedAx, [w.t(1) w.t(end)]); ylim(removedAx, removedRange);
-    markClipped(removedAx, removedClipped, style);
+    RELAX_QC_mark_clipped(removedAx, removedClipped, style);
     xlabel(removedAx, 'Time (s)'); ylabel(removedAx, removedLabel(w, isPop)); removedAx.FontSize = style.fontSize;
-end
-
-function markClipped(ax, isClipped, style)
-    if ~isClipped, return, end
-    text(ax, 0.99, 0.02, 'clipped', 'Units', 'normalized', 'HorizontalAlignment', 'right', ...
-         'VerticalAlignment', 'bottom', 'Color', style.muted, 'FontSize', style.fontSize - 1, 'FontAngle', 'italic');
-end
-
-function shade(ax, interval, yRange, style)
-    if isempty(interval), return, end
-    centre = mean(interval);
-    interval = centre + [-1 1] * max(diff(interval), minimumShadeSeconds()) / 2;
-    patch(ax, interval([1 2 2 1]), yRange([1 1 2 2]), style.removed, 'FaceAlpha', 0.25, 'EdgeColor', style.removed, 'LineWidth', 0.5, ...
-          'HandleVisibility', 'off');
-end
-
-function shadeExcised(ax, intervals, yRange, labelled, style)
-    for k = 1:size(intervals, 1)
-        patch(ax, intervals(k, [1 2 2 1]), yRange([1 1 2 2]), [0.85 0.85 0.85], 'FaceAlpha', 0.6, 'EdgeColor', 'none', 'HandleVisibility', 'off');
-        if labelled
-            text(ax, mean(intervals(k, :)), yRange(2) - 0.02 * diff(yRange), 'later excised', ...
-                 'HorizontalAlignment', 'center', 'VerticalAlignment', 'top', 'Color', style.muted, 'FontSize', style.fontSize - 1);
-        end
-    end
 end

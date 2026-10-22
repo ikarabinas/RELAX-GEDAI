@@ -32,7 +32,7 @@ function w = comparisonWindow(kind, centre, before, after, labels, opts)
         w.note = "No " + kind + " found in this file";
         return
     end
-    w = fillWindow(w, centre, before, after, labels, opts);
+    w = RELAX_QC_fill_window(w, centre, before, after, labels, opts.exampleSeconds);
 end
 
 function windows = popWindows(pick, summary, extremesEEG, paths, cfg, shownLabels, opts)
@@ -81,7 +81,7 @@ function c = centreOf(override, automatic)
 end
 
 function w = popWindow(w, pop, centre, unrepaired, repaired, filtered, extremesEEG, labels, opts)
-    w = fillWindow(w, centre, unrepaired, repaired, labels, opts);
+    w = RELAX_QC_fill_window(w, centre, unrepaired, repaired, labels, opts.exampleSeconds);
     firstSecond = w.t < w.t(1) + 1;
     w.before = w.before - median(w.before(:, firstSecond), 2);
     w.after = w.after - median(w.after(:, firstSecond), 2);
@@ -108,24 +108,4 @@ function fidelity = replayFidelity(w, replayed, extremesEEG)
     fidelity = struct('channels', {w.channels(usable)}, ...
                       'relativeRms', sqrt(sum(difference.^2, 2) ./ sum(saved.^2, 2))', ...
                       'fractionCompared', mean(keep));
-end
-
-function w = fillWindow(w, centre, before, after, labels, opts)
-    present = labels(ismember(labels, {before.chanlocs.labels}) & ismember(labels, {after.chanlocs.labels}));
-    [~, beforeRows] = ismember(present, {before.chanlocs.labels});
-    [~, afterRows]  = ismember(present, {after.chanlocs.labels});
-    half = round(opts.exampleSeconds / 2 * after.srate);
-    middle = round(centre * after.srate) + 1;
-    first = max(1, min(middle - half, after.pnts - 2 * half));
-    span = first : min(after.pnts, first + 2 * half);
-
-    w.channels = present;
-    w.t = (span - 1) / after.srate;
-    w.before = double(before.data(beforeRows, span));
-    w.after = double(after.data(afterRows, span));
-    w.removed = w.before - w.after;
-    segments = RELAX_get_segments(after);
-    starts = segments(2:end, 1);
-    w.boundaries = (starts(starts > span(1) & starts <= span(end))' - 1.5) / after.srate;
-    w.available = true;
 end

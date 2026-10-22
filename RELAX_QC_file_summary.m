@@ -49,7 +49,7 @@ function summary = RELAX_QC_file_summary(paths, cfg, opts)
     summary.psdInput = interp1(inputFreqs, mean(p, 1), summary.freqs);
     clear inputEEG
 
-    summary = addBlinks(summary, baseline, cleanedEEG, removedData, cfg.BlinkElectrodes, opts);
+    summary = addBlinks(summary, baseline, cleanedEEG, cfg.BlinkElectrodes, opts);
     clear removedData
 
     [trace, channelPower] = RELAX_QC_muscle_trace(baseline, opts.muscleWindowSeconds);
@@ -66,7 +66,7 @@ function summary = RELAX_QC_file_summary(paths, cfg, opts)
     summary.status = "ok";
 end
 
-function summary = addBlinks(summary, baseline, cleanedEEG, removedData, blinkLabels, opts)
+function summary = addBlinks(summary, baseline, cleanedEEG, blinkLabels, opts)
     srate = cleanedEEG.srate;
     half = round(opts.blinkHalfSeconds * srate);
     peaks = RELAX_QC_blink_peaks(cleanedEEG, half);
@@ -74,26 +74,15 @@ function summary = addBlinks(summary, baseline, cleanedEEG, removedData, blinkLa
     summary.blinkTimes = (-half:half) / srate;
     if isempty(peaks), return, end
 
-    blinkRows = ismember({cleanedEEG.chanlocs.labels}, blinkLabels);
-    [b, c, r] = deal(zeros(cleanedEEG.nbchan, 2 * half + 1));
-    for p = peaks
-        span = p - half : p + half;
-        b = b + double(baseline.data(:, span));
-        c = c + double(cleanedEEG.data(:, span));
-        r = r + removedData(:, span);
-    end
-    preBlink = summary.blinkTimes <= -0.3;
-    b = b / numel(peaks); b = b - mean(b(:, preBlink), 2);
-    c = c / numel(peaks); c = c - mean(c(:, preBlink), 2);
-    r = r / numel(peaks); r = r - mean(r(:, preBlink), 2);
-    atPeak = abs(summary.blinkTimes) <= opts.topoHalfSeconds;
-    summary.blinkErpBaseline = mean(b(blinkRows, :), 1);
-    summary.blinkErpCleaned  = mean(c(blinkRows, :), 1);
-    summary.blinkErpRemoved  = mean(r(blinkRows, :), 1);
-    summary.topoBaseline = mean(b(:, atPeak), 2);
-    summary.topoCleaned  = mean(c(:, atPeak), 2);
-    summary.topoRemoved  = mean(r(:, atPeak), 2);
+    avg = RELAX_QC_blink_average(baseline, cleanedEEG, peaks, blinkLabels, half, opts.topoHalfSeconds);
+    summary.blinkErpBaseline = avg.erpBaseline;
+    summary.blinkErpCleaned  = avg.erpCleaned;
+    summary.blinkErpRemoved  = avg.erpRemoved;
+    summary.topoBaseline = avg.topoBaseline;
+    summary.topoCleaned  = avg.topoCleaned;
+    summary.topoRemoved  = avg.topoRemoved;
 
+    blinkRows = ismember({cleanedEEG.chanlocs.labels}, blinkLabels);
     [summary.scores.blinkAmplitude, biggest] = max(mean(abs(double(baseline.data(blinkRows, peaks))), 1));
     summary.centres.blink = (peaks(biggest) - 1) / srate;
 end
