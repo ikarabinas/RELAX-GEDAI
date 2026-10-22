@@ -28,7 +28,32 @@ function test_RELAX_screen_sheet_data()
     assert(all(contains([missingBlinks.note], 's apart')) || crowded.blinkN == nnz([crowded.blink.available]));
     missingMuscle = crowded.muscle(~[crowded.muscle.available]);
     assert(~isempty(missingMuscle) && all(contains([missingMuscle.note], 'muscle burst')) && all(contains([missingMuscle.note], 'at least 3 s apart')));
+    opts.nWindows = 3;
+    refusedCfg = loaded.RELAX_cfg; refusedCfg.Run_GEDAI = 1; refusedCfg.GEDAI_BroadbandOnly = false;
+    assertConfigRefused(refusedCfg);
+    sheetWithoutBaseline = RELAX_screen_sheet_data(paths, refusedCfg, opts);
+    assertNoBefore(sheetWithoutBaseline);
+    assert(all(isnan(sheetWithoutBaseline.blinkAverage.erpBaseline)), 'no baseline: blink average has no baseline trace');
+
+    missingExtremes = paths; missingExtremes.extremes = fullfile(tempname, 'nope_Extremes_Rejected.set');
+    assertNoBefore(RELAX_screen_sheet_data(missingExtremes, loaded.RELAX_cfg, opts));
     fprintf('sheet fixture: %d muscle windows, %d blink windows, blinkN %d, baselineNote "%s"\n', ...
         nnz([sheet.muscle.available]), nnz([sheet.blink.available]), sheet.blinkN, sheet.baselineNote);
     fprintf('test_RELAX_screen_sheet_data: PASS\n');
+end
+
+function assertConfigRefused(cfg)
+    refused = false;
+    try
+        RELAX_QC_check_config(cfg);
+    catch
+        refused = true;
+    end
+    assert(refused, 'the test config must be one RELAX_QC_check_config refuses');
+end
+
+function assertNoBefore(sheet)
+    assert(strlength(sheet.baselineNote) > 0, 'the reason for the missing baseline is reported');
+    available = [sheet.muscle([sheet.muscle.available]) sheet.blink([sheet.blink.available])];
+    assert(~isempty(available) && all(arrayfun(@(w) isempty(w.before), available)));
 end

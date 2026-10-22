@@ -5,7 +5,8 @@
 %
 % Inputs:
 %   cleanedEEG  - cleaned continuous EEG
-%   peaks       - blink peak samples (RELAX_QC_blink_peaks)
+%   peaks       - blink peak samples (RELAX_QC_blink_peaks); each needs 0.5 s of data inside
+%                 its segment before it, so find them with a half window of at least 0.5 s
 %   blinkLabels - blink electrodes; those absent from cleanedEEG are ignored
 %
 % Outputs:

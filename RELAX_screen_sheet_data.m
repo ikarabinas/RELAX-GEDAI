@@ -49,7 +49,7 @@ function sheet = RELAX_screen_sheet_data(paths, cfg, opts)
     sheet.baselineNote = baselineNote;
     [sheet.muscle, sheet.muscleRelativePower] = muscleWindows(cleanedEEG, baseline, filtered, trace, shownBlinkLabels, blinkLabels, opts);
 
-    peaks = RELAX_QC_blink_peaks(cleanedEEG, round(opts.blinkHalfSeconds * srate));
+    peaks = unique(RELAX_QC_blink_peaks(cleanedEEG, round(max(opts.blinkHalfSeconds, 0.5) * srate)));
     sheet.blinkN = numel(peaks);
     [sheet.blink, sheet.blinkResidual] = blinkWindows(cleanedEEG, baseline, filtered, peaks, shownBlinkLabels, blinkLabels, opts);
     sheet.blinkAverage = [];
@@ -103,6 +103,10 @@ function [windows, relativePower] = muscleWindows(cleanedEEG, baseline, filtered
         windows(k) = filledWindow("muscle", centres(k), cleanedEEG, baseline, filtered, shownBlinkLabels, blinkLabels, opts);
         relativePower(k) = trace(round(centres(k) * srate) + 1) / typicalPower;
     end
+    if all(isnan(trace))
+        [windows.note] = deal("No segment long enough to measure muscle power");
+        return
+    end
     for k = numel(centres) + 1 : opts.nWindows
         windows(k).note = shortfallNote("muscle burst", "muscle bursts", numel(centres), nnz(~isnan(trace)), opts.windowSeconds);
     end
@@ -121,7 +125,7 @@ function [windows, residual] = blinkWindows(cleanedEEG, baseline, filtered, peak
     centres = RELAX_screen_top_separated(peakSeconds, scores, opts.nWindows, opts.windowSeconds);
     for k = 1:numel(centres)
         windows(k) = filledWindow("blink", centres(k), cleanedEEG, baseline, filtered, shownBlinkLabels, blinkLabels, opts);
-        residual(k) = scores(peakSeconds == centres(k));
+        residual(k) = scores(find(peakSeconds == centres(k), 1));
     end
     for k = numel(centres) + 1 : opts.nWindows
         windows(k).note = shortfallNote("blink", "blinks", numel(centres), numel(peaks), opts.windowSeconds);
