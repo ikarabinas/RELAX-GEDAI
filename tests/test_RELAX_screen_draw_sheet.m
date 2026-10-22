@@ -1,6 +1,8 @@
 function test_RELAX_screen_draw_sheet()
-% The reason text names flagging or missing metrics; a sheet is saved for a failing file, a file
-% without a baseline, a file without blinks and a file whose blink electrodes were all lost.
+% The reason text names flagging or missing metrics (missing slope never listed, extra note
+% appended, notCleaned handled); a sheet is saved for a failing file, a file without a
+% baseline, a file without blinks, a screen with a zero-scale metric, and a file whose z is
+% far beyond the strip plots' range.
 
     reviewDir = tempname; cleanup = onCleanup(@() removeIfPresent(reviewDir));
     figuresBefore = numel(findall(groot, 'Type', 'figure'));
@@ -35,6 +37,10 @@ function test_RELAX_screen_draw_sheet()
     noBlinks.blink = repmat(RELAX_QC_empty_window("blink"), 1, 3); [noBlinks.blink.note] = deal("No blinks in this file");
     noBlinks.blinkResidual = nan(1, 3);
     RELAX_screen_draw_sheet(noBlinks, screen(3, :), screen, meta, reviewDir);
+
+    offScale = screen; offScale.MuscleProportion_z(2:3) = [40; 55];
+    RELAX_screen_draw_sheet(sheet, offScale(2, :), offScale, meta, fullfile(reviewDir, 'offScale'));
+    assert(isfile(fullfile(reviewDir, 'offScale', 'f2.png')));
 
     allZero = screen; allZero.MuscleStrength_z(:) = NaN;
     meta.zeroScaleMetrics = "MuscleStrength";

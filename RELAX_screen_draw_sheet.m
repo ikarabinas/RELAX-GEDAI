@@ -40,20 +40,20 @@ end
 
 function place = sheetLayout()
     place.widthCm = 30;
-    place.heightCm = 66;
+    place.heightCm = 73;
     place.left = 0.07;
     place.right = 0.97;
     place.titleFromTop = 0.5;
     place.reasonFromTop = 1.8;
-    place.tableTopFromTop = 5.0;
-    place.tableBottomFromTop = 10.5;
-    place.traceHeightCm = 3.8;
-    place.muscleLabelFromTop = 13.2;
-    place.muscleTopsFromTop = 14.8 + (0:2) * 6.4;
-    place.blinkLabelFromTop = 34.8;
-    place.blinkTopsFromTop = 36.6 + (0:2) * 6.4;
-    place.topoLabelFromTop = 57.0;
-    place.topoTopFromTop = 57.5;
+    place.tableTopFromTop = 4.8;
+    place.tableBottomFromTop = 9.6;
+    place.traceHeightCm = 5.8;
+    place.muscleLabelFromTop = 12.2;
+    place.muscleTopsFromTop = 12.7 + (0:2) * 7.7;
+    place.blinkLabelFromTop = 37.1;
+    place.blinkTopsFromTop = 37.6 + (0:2) * 7.7;
+    place.topoLabelFromTop = 62.3;
+    place.topoTopFromTop = 62.9;
     place.topoHeightCm = 7;
     place.fromTop = @(cm) 1 - cm / place.heightCm;
     place.bottomFromTop = @(topCm, heightCm) 1 - (topCm + heightCm) / place.heightCm;
@@ -73,6 +73,7 @@ function drawMetricsTable(fig, page, row, screen, meta, place, style)
     lineHeightCm = (place.tableBottomFromTop - place.tableTopFromTop) / nLines;
     lineCentre = @(k) place.fromTop(place.tableTopFromTop + (k - 0.5) * lineHeightCm);
     stripHeight = 0.6 * lineHeightCm / place.heightCm;
+    stripRight = 0.89;
     fontSize = style.fontSize + 2;
 
     headers = struct('metric', "Metric", 'value', "This file", 'median', "Dataset median", 'z', "Robust z", ...
@@ -95,23 +96,24 @@ function drawMetricsTable(fig, page, row, screen, meta, place, style)
             text(page, columns.(field), lineCentre(m + 1), cells.(field), 'FontSize', fontSize, 'Color', colour, ...
                  'FontWeight', weight, 'Interpreter', 'none');
         end
-        stripAxes = axes(fig, 'Position', [0.63, lineCentre(m + 1) - stripHeight / 2, place.right - 0.63, stripHeight]);
-        drawStrip(stripAxes, screen.(name + "_z")(cleanedRows), row.(name + "_z"), name, meta, zLimits, m == numel(meta.metricNames), style);
+        stripAxes = axes(fig, 'Position', [0.63, lineCentre(m + 1) - stripHeight / 2, stripRight - 0.63, stripHeight]);
+        drawStrip(page, stripAxes, screen.(name + "_z")(cleanedRows), row.(name + "_z"), name, meta, zLimits, m == numel(meta.metricNames), style);
     end
 end
 
 function limits = commonZLimits(screen, meta, cleanedRows)
+% One range for every strip, capped so a single wild file cannot flatten the rest.
     allZ = cellfun(@(name) screen.(name + "_z")(cleanedRows), cellstr(meta.metricNames), 'UniformOutput', false);
     allZ = vertcat(allZ{:});
-    limits = [min([allZ; 0], [], 'omitnan') - 0.5, max([allZ; meta.cutoff], [], 'omitnan') + 1];
+    limits = [min([allZ; -3], [], 'omitnan') - 0.5, max(3 * meta.cutoff, meta.cutoff + 1)];
 end
 
-function drawStrip(ax, cleanedZ, thisZ, name, meta, zLimits, isLast, style)
+function drawStrip(page, ax, cleanedZ, thisZ, name, meta, zLimits, isLast, style)
     hold(ax, 'on');
     xlim(ax, zLimits); ylim(ax, [0 1]);
     ax.YTick = []; ax.FontSize = style.fontSize; ax.Box = 'off';
     if ~isLast, ax.XTickLabel = []; end
-    if isLast, xlabel(ax, 'Robust z of every cleaned file'); end
+    if isLast, xlabel(ax, 'Robust z of cleaned files (> = beyond the edge)'); end
     xline(ax, meta.cutoff, '--', 'Color', style.ink, 'LineWidth', 1);
     if ismember(name, meta.zeroScaleMetrics)
         text(ax, mean(zLimits), 0.5, 'no spread across files: no z-scores', 'HorizontalAlignment', 'center', ...
@@ -119,9 +121,18 @@ function drawStrip(ax, cleanedZ, thisZ, name, meta, zLimits, isLast, style)
         return
     end
     present = cleanedZ(~isnan(cleanedZ));
-    scatter(ax, present, deterministicJitter(numel(present)), 14, style.before, 'filled', 'MarkerFaceAlpha', 0.6);
+    offScale = present > zLimits(2);
+    jitter = deterministicJitter(numel(present));
+    scatter(ax, present(~offScale), jitter(~offScale), 14, style.before, 'filled', 'MarkerFaceAlpha', 0.6);
+    scatter(ax, repmat(zLimits(2), 1, nnz(offScale)), jitter(offScale), 20, style.before, '>', 'filled');
     if ~isnan(thisZ)
-        scatter(ax, thisZ, 0.5, 60, style.channelScreens(5, :), 'filled', 'MarkerEdgeColor', style.ink, 'LineWidth', 1);
+        marker = 'o'; if thisZ > zLimits(2), marker = '>'; end
+        scatter(ax, min(thisZ, zLimits(2)), 0.5, 70, style.channelScreens(5, :), marker, 'filled', 'MarkerEdgeColor', style.ink, 'LineWidth', 1);
+    end
+    if any(offScale)
+        position = ax.Position;
+        text(page, position(1) + position(3) + 0.01, position(2) + position(4) / 2, sprintf('%d off-scale', nnz(offScale)), ...
+             'FontSize', style.fontSize + 1, 'Color', style.muted, 'VerticalAlignment', 'middle');
     end
 end
 
@@ -148,6 +159,7 @@ end
 function drawTraceRows(fig, page, label, windows, strengths, strengthFormat, labelFromTop, topsFromTop, place, style)
     text(page, place.left, place.fromTop(labelFromTop), label + "s, loudest first", 'FontWeight', 'bold', ...
          'FontSize', style.fontSize + 3, 'Color', style.ink, 'VerticalAlignment', 'bottom');
+    drawTraceKey(page, any(arrayfun(@(w) ~isempty(w.before), windows)), place.fromTop(labelFromTop) + 0.003, style);
     for k = 1:numel(windows)
         w = windows(k);
         ax = axes(fig, 'Position', [place.left, place.bottomFromTop(topsFromTop(k), place.traceHeightCm), place.right - place.left, place.traceHeightCm / place.heightCm]);
@@ -156,11 +168,38 @@ function drawTraceRows(fig, page, label, windows, strengths, strengthFormat, lab
             RELAX_QC_draw_note(ax, heading + ": " + w.note);
             continue
         end
-        RELAX_QC_draw_traces(ax, w, "Before wICA", "Cleaned", style);
+        handles = RELAX_QC_draw_traces(ax, w, "Before wICA", "Cleaned", style);
+        legend(ax, 'off');
+        trimEmptyHeadroom(ax, handles, numel(w.channels), style);
         ax.XTickLabelMode = 'auto';
         xlabel(ax, heading + sprintf(", starts at %.1f s: ", w.t(1)) + sprintf(strengthFormat, strengths(k)), ...
                'FontSize', style.fontSize + 2, 'FontWeight', 'bold');
     end
+end
+
+function drawTraceKey(page, hasBefore, y, style)
+    entries = {"Cleaned", style.cleaned};
+    if hasBefore, entries = [{"Before wICA", style.before}; entries]; end
+    x = 0.36;
+    for k = 1:size(entries, 1)
+        line(page, [x x + 0.03], [y y], 'Color', entries{k, 2}, 'LineWidth', 2);
+        text(page, x + 0.038, y, entries{k, 1}, 'FontSize', style.fontSize + 2, 'Color', style.ink, 'VerticalAlignment', 'middle');
+        x = x + 0.17;
+    end
+end
+
+function trimEmptyHeadroom(ax, handles, nChannels, style)
+% RELAX_QC_draw_traces leaves room for a legend and a clipping mark; a sheet gives that room to the traces.
+    spacing = -ax.YLim(1) / 1.5;
+    delete(findobj(ax, 'Type', 'text', 'String', 'clipped'));
+    ylim(ax, [-1.2 * spacing, (nChannels - 1) * spacing + 2 * spacing]);
+    yRange = ylim(ax);
+    for label = findobj(ax, 'Type', 'text', 'String', 'later excised')'
+        label.Position(2) = yRange(2) - 0.02 * diff(yRange);
+    end
+    plotted = [handles.before; handles.after];
+    clipped = arrayfun(@(h) any(h.YData < yRange(1) | h.YData > yRange(2)), plotted);
+    RELAX_QC_mark_clipped(ax, any(clipped), style);
 end
 
 function drawTopographyRow(fig, page, sheet, place, style)
@@ -184,6 +223,7 @@ function drawTopographyRow(fig, page, sheet, place, style)
     limit = max(abs([maps{:}]), [], 'all', 'omitnan');
     if ~(limit > 0), limit = 1; end
     electrodes = electrodeOptions(find(ismember({sheet.chanlocs.labels}, sheet.interpolatedLabels)));
+    drawn = false(1, 3);
     for j = 1:3
         ax = mapAxes(j);
         if j ~= 2 && ~hasBaseline
@@ -193,11 +233,15 @@ function drawTopographyRow(fig, page, sheet, place, style)
         axes(ax); %#ok<LAXES> topoplot draws into the current axes
         topoplot(maps{j}, sheet.chanlocs, 'maplimits', [-limit limit], 'colormap', style.diverging, ...
                  electrodes{:});
-        title(ax, titles(j), 'FontSize', style.fontSize + 2, 'FontWeight', 'normal');
+        set(findobj(ax, 'Type', 'line', 'Marker', 'o'), 'MarkerFaceColor', 'none', 'MarkerSize', 8, 'LineWidth', 0.75);
+        drawn(j) = true;
     end
     scale = colorbar(mapAxes(3), 'Position', [mapLefts(3) + mapWidth + 0.005, bottom + 0.3 * height, 0.01, 0.4 * height]);
     scale.Title.String = '\muV';
     colormap(mapAxes(3), style.diverging); clim(mapAxes(3), [-limit limit]);
+    for j = find(drawn)
+        title(mapAxes(j), titles(j), 'FontSize', style.fontSize + 2, 'FontWeight', 'normal');
+    end
     drawBlinkTimeCourse(timeAxes, avg, hasBaseline, style);
 end
 
@@ -209,6 +253,10 @@ function options = electrodeOptions(interpolatedIdx)
 end
 
 function heading = blinkAverageHeading(sheet)
+    if sheet.blinkN == 0
+        heading = "Blink-locked average: no blinks in this file";
+        return
+    end
     heading = "Blink-locked average over all " + sheet.blinkN + " blinks (baseline −500 to −300 ms, ±50 ms at the peak)";
     if ~isempty(sheet.interpolatedLabels)
         heading = heading + newline + "Circled electrodes are interpolated: " + strjoin(string(sheet.interpolatedLabels), ", ");

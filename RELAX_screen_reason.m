@@ -6,14 +6,14 @@
 %
 % Inputs:
 %   row          - one row of the table from RELAX_screen_score_table
-%   meta         - its second output (.cutoff, .metricNames)
+%   meta         - its second output (.cutoff, .metricNames, .unscreeningMetrics)
 %   baselineNote - (optional) why the before-wICA trace is missing; appended after " | "
 %                  when not empty
 %
 % Outputs:
 %   reason - string. Failing files list each flagging metric with its z; unscreened files
-%            list the missing metrics that leave a file unscreened (a missing
-%            MuscleStrength never does); passing files state the cutoff.
+%            list the missing metrics of meta.unscreeningMetrics (a missing
+%            MuscleStrength never leaves a file unscreened); passing files state the cutoff.
 
 function reason = RELAX_screen_reason(row, meta, baselineNote)
 
@@ -21,7 +21,7 @@ function reason = RELAX_screen_reason(row, meta, baselineNote)
     switch row.ScreenOutcome
         case "notCleaned", reason = "Not cleaned by the pipeline";
         case "fail",       reason = failReason(row, meta);
-        case "unscreened", reason = unscreenedReason(row);
+        case "unscreened", reason = unscreenedReason(row, meta);
         otherwise,         reason = sprintf("All metrics within cutoff %.1f", meta.cutoff);
     end
     if strlength(baselineNote) > 0, reason = reason + " | " + baselineNote; end
@@ -38,9 +38,8 @@ function reason = failReason(row, meta)
     reason = strjoin(sentences, "; ");
 end
 
-function reason = unscreenedReason(row)
-    metricsThatUnscreen = ["MuscleProportion", "BlinkRatio", "NInterpolated"];
-    missing = metricsThatUnscreen(arrayfun(@(name) isnan(row.(name)), metricsThatUnscreen));
+function reason = unscreenedReason(row, meta)
+    missing = meta.unscreeningMetrics(arrayfun(@(name) isnan(row.(name)), meta.unscreeningMetrics));
     reason = "Not screened";
     if ~isempty(missing), reason = reason + ": " + strjoin(missing, ", ") + " missing"; end
 end

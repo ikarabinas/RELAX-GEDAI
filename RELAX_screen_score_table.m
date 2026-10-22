@@ -16,7 +16,8 @@
 %            <M>_median, <M>_scale, <M>_z, <M>_flag; ScreenOutcome, FlaggedBy, InReviewSample,
 %            SheetStatus ("" until the sheets stage) and SheetMessage
 %   meta   - .cutoff, .sampleSize, .seed, .nCleaned, .created, .metricNames and
-%            .zeroScaleMetrics (metrics whose scale is not positive, so they cannot flag)
+%            .zeroScaleMetrics (metrics whose scale is not positive, so they cannot flag) and
+%            .unscreeningMetrics (metrics whose NaN leaves a file unscreened)
 %
 % The median and scale come from the cleaned files only. The review sample uses its own
 % seeded random stream, so the global rng is left alone.
@@ -52,7 +53,8 @@ function [screen, meta] = RELAX_screen_score_table(T, metrics, opts)
 
     meta = struct('cutoff', opts.cutoff, 'sampleSize', opts.sampleSize, 'seed', opts.seed, ...
                   'nCleaned', sum(isCleaned), 'created', datetime('now'), ...
-                  'metricNames', metricNames, 'zeroScaleMetrics', metricNames(zeroScale));
+                  'metricNames', metricNames, 'zeroScaleMetrics', metricNames(zeroScale), ...
+                  'unscreeningMetrics', metricNames(missingMakesUnscreened));
 end
 
 function x = valuesOfCleanedOnly(x, isCleaned)

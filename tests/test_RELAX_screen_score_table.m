@@ -12,6 +12,7 @@ function test_RELAX_screen_score_table()
     assert(s.ScreenOutcome(6) == "fail" && s.FlaggedBy(6) == "MuscleProportion");
     assert(s.ScreenOutcome(4) == "unscreened" && s.ScreenOutcome(8) == "notCleaned");
     assert(all(isnan(s.NInterpolated_z)) && any(meta.zeroScaleMetrics == "NInterpolated"));
+    assert(isequal(meta.unscreeningMetrics, ["MuscleProportion", "BlinkRatio", "NInterpolated"]));
     assert(sum(s.InReviewSample) == 2 && all(s.ScreenOutcome(s.InReviewSample) == "pass"));
     assert(s.MuscleProportion_flag(6) && ~s.MuscleProportion_flag(1), 'flag is true only for the outlier');
     assert(~s.MuscleProportion_flag(8), 'a non-cleaned row never flags');
