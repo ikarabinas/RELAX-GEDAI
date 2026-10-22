@@ -30,9 +30,9 @@ function RELAX_screen_draw_sheet(sheet, row, screen, meta, reviewDir)
     drawHeader(page, row, RELAX_screen_reason(row, meta, sheet.baselineNote), place, style);
     drawMetricsTable(fig, page, row, screen, meta, place, style);
     drawTraceRows(fig, page, "Muscle burst", sheet.muscle, sheet.muscleRelativePower, "%.1f× file median 20–80 Hz power", ...
-                  place.muscleLabelFromTop, place.muscleTopsFromTop, place, style);
+                  sheet.interpolatedLabels, place.muscleLabelFromTop, place.muscleTopsFromTop, place, style);
     drawTraceRows(fig, page, "Blink", sheet.blink, sheet.blinkResidual, "%.0f µV left at the blink peak", ...
-                  place.blinkLabelFromTop, place.blinkTopsFromTop, place, style);
+                  sheet.interpolatedLabels, place.blinkLabelFromTop, place.blinkTopsFromTop, place, style);
     drawTopographyRow(fig, page, sheet, place, style);
 
     RELAX_QC_save_figure(fig, reviewDir, char(row.File));
@@ -156,7 +156,7 @@ function s = flagText(flagged)
     if flagged, s = "FLAGGED"; else, s = "no"; end
 end
 
-function drawTraceRows(fig, page, label, windows, strengths, strengthFormat, labelFromTop, topsFromTop, place, style)
+function drawTraceRows(fig, page, label, windows, strengths, strengthFormat, interpolatedLabels, labelFromTop, topsFromTop, place, style)
     text(page, place.left, place.fromTop(labelFromTop), label + "s, loudest first", 'FontWeight', 'bold', ...
          'FontSize', style.fontSize + 3, 'Color', style.ink, 'VerticalAlignment', 'bottom');
     drawTraceKey(page, any(arrayfun(@(w) ~isempty(w.before), windows)), place.fromTop(labelFromTop) + 0.003, style);
@@ -171,6 +171,8 @@ function drawTraceRows(fig, page, label, windows, strengths, strengthFormat, lab
         handles = RELAX_QC_draw_traces(ax, w, "Before wICA", "Cleaned", style);
         legend(ax, 'off');
         trimEmptyHeadroom(ax, handles, numel(w.channels), style);
+        markInterpolatedTicks(ax, interpolatedLabels);
+        drawScaleBar(ax, handles.spacing, style);
         ax.XTickLabelMode = 'auto';
         xlabel(ax, heading + sprintf(", starts at %.1f s: ", w.t(1)) + sprintf(strengthFormat, strengths(k)), ...
                'FontSize', style.fontSize + 2, 'FontWeight', 'bold');
@@ -190,7 +192,7 @@ end
 
 function trimEmptyHeadroom(ax, handles, nChannels, style)
 % RELAX_QC_draw_traces leaves room for a legend and a clipping mark; a sheet gives that room to the traces.
-    spacing = -ax.YLim(1) / 1.5;
+    spacing = handles.spacing;
     delete(findobj(ax, 'Type', 'text', 'String', 'clipped'));
     ylim(ax, [-1.2 * spacing, (nChannels - 1) * spacing + 2 * spacing]);
     yRange = ylim(ax);
@@ -200,6 +202,30 @@ function trimEmptyHeadroom(ax, handles, nChannels, style)
     plotted = [handles.before; handles.after];
     clipped = arrayfun(@(h) any(h.YData < yRange(1) | h.YData > yRange(2)), plotted);
     RELAX_QC_mark_clipped(ax, any(clipped), style);
+end
+
+function markInterpolatedTicks(ax, interpolatedLabels)
+    labels = ax.YTickLabel;
+    isInterpolated = ismember(labels, interpolatedLabels);
+    labels(isInterpolated) = cellfun(@(label) [label ' (interp.)'], labels(isInterpolated), 'UniformOutput', false);
+    ax.YTickLabel = labels;
+end
+
+function drawScaleBar(ax, spacing, style)
+% A vertical bar at the right of the lowest trace's gap, as long as the 1-2-5 value just under one trace spacing.
+    barMicrovolts = oneTwoFiveBelow(spacing);
+    xRange = xlim(ax);
+    x = xRange(2) - 0.01 * diff(xRange);
+    bottom = -1.1 * spacing;
+    line(ax, [x x], bottom + [0 barMicrovolts], 'Color', style.ink, 'LineWidth', 2, 'HandleVisibility', 'off');
+    text(ax, x - 0.006 * diff(xRange), bottom + barMicrovolts / 2, sprintf('%g µV', barMicrovolts), 'FontSize', style.fontSize, ...
+         'Color', style.ink, 'HorizontalAlignment', 'right', 'VerticalAlignment', 'middle');
+end
+
+function value = oneTwoFiveBelow(x)
+    magnitude = 10 ^ floor(log10(x));
+    steps = [1 2 5 10] * magnitude;
+    value = steps(find(steps <= x * (1 + 1e-9), 1, 'last'));
 end
 
 function drawTopographyRow(fig, page, sheet, place, style)

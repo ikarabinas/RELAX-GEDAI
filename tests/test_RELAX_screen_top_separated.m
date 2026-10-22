@@ -8,6 +8,9 @@ function test_RELAX_screen_top_separated()
     c = RELAX_screen_top_separated([1 1.5 8], [5 4 3], 3, 3);
     assert(isequal(c, [1 8]), 'fewer than k separated candidates returns fewer');
 
+    c = RELAX_screen_top_separated([1 5 9 13], [4 3 2 1], 2, 3);
+    assert(isequal(c, [1 5]), 'more separated candidates than k returns the k highest');
+
     assert(isempty(RELAX_screen_top_separated([], [], 3, 3)));
     assert(isempty(RELAX_screen_top_separated([1 2], [NaN NaN], 3, 3)));
     fprintf('test_RELAX_screen_top_separated: PASS\n');

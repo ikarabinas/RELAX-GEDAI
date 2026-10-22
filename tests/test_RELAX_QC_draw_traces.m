@@ -12,6 +12,7 @@ function test_RELAX_QC_draw_traces()
     handles = RELAX_QC_draw_traces(ax, w, "Before wICA", "Cleaned", style);
     assert(numel(handles.before) == 3 && numel(handles.after) == 3);
     assert(isequal(ax.YTickLabel(:)', {'E3', 'E2', 'E1'}) && ax.XLim(2) == w.t(end));
+    assert(abs(handles.spacing + ax.YLim(1) / 1.5) < 1e-9 * handles.spacing && isequal(handles.yRange, ax.YLim), 'spacing and y range are returned');
 
     ax = axes(fig);
     w.before = []; w.removed = [];

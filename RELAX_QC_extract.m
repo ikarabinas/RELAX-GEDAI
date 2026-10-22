@@ -88,8 +88,9 @@ end
 % Each SLURM job needs its own job storage, or concurrent pools clobber each other.
 function startWorkerPool(nFiles)
     if ~isempty(gcp('nocreate')) || nFiles == 0, return, end
-    nWorkers = min(nFiles, max(1, str2double(getenv('SLURM_CPUS_PER_TASK'))));
+    nWorkers = str2double(getenv('SLURM_CPUS_PER_TASK'));
     if isnan(nWorkers), return, end
+    nWorkers = min(nFiles, max(1, nWorkers));
     cluster = parcluster('local');
     storage = fullfile(getenv('TMPDIR'), sprintf('qc_extract_%s', getenv('SLURM_JOB_ID')));
     if ~isempty(getenv('TMPDIR')) && ~isempty(getenv('SLURM_JOB_ID'))

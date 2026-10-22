@@ -5,7 +5,7 @@
 %   >> sheet = RELAX_screen_sheet_data(paths, cfg, opts);
 %
 % Inputs:
-%   paths - .input, .extremes, .cleaned (RELAX_QC_file_paths)
+%   paths - .extremes and .cleaned (the fields of RELAX_QC_file_paths this reads)
 %   cfg   - that participant's saved RELAX_cfg
 %   opts  - .windowSeconds        window length, also the least distance between window centres
 %           .nWindows             windows of each kind
@@ -16,7 +16,10 @@
 %                                 absent or NaN is read as 0 (RELAX_screen_blink_labels)
 %
 % Windows are ranked on the cleaned data. Each shows up to 4 blink electrodes plus the 2
-% non-blink channels with the most 20-80 Hz power inside that window. The before-wICA trace is
+% non-blink channels with the most 20-80 Hz power inside that window. Muscle bursts are ranked
+% only where the smoothing window lies wholly inside a segment, and a window slides to stay
+% inside its segment when the segment is long enough. Blinks are ranked on the blink electrodes
+% that were not interpolated. The before-wICA trace is
 % included when the baseline rebuilds and aligns; otherwise before = [] and baselineNote says why.
 %
 % Outputs (sheet):
@@ -25,7 +28,7 @@
 %   baselineNote        - "" when the before-wICA trace is available, otherwise the reason
 %   muscle, blink       - [1 x nWindows] RELAX_QC_empty_window structs, strongest first;
 %                         available = false with a note when the file has too few candidates
-%   muscleRelativePower - [1 x nWindows] smoothed power at each window's centre over the file
+%   muscleRelativePower - [1 x nWindows] smoothed power at each burst's peak over the file
 %                         median of that trace; NaN for unavailable windows
 %   blinkResidual       - [1 x nWindows] microvolts left at each window's blink
 %                         (RELAX_screen_blink_residual); NaN for unavailable windows
@@ -51,7 +54,8 @@ function sheet = RELAX_screen_sheet_data(paths, cfg, opts)
 
     peaks = unique(RELAX_QC_blink_peaks(cleanedEEG, round(max(opts.blinkHalfSeconds, 0.5) * srate)));
     sheet.blinkN = numel(peaks);
-    [sheet.blink, sheet.blinkResidual] = blinkWindows(cleanedEEG, baseline, filtered, peaks, shownBlinkLabels, blinkLabels, opts);
+    rankedBlinkLabels = setdiff(blinkLabels, sheet.interpolatedLabels, 'stable');
+    [sheet.blink, sheet.blinkResidual] = blinkWindows(cleanedEEG, baseline, filtered, peaks, shownBlinkLabels, blinkLabels, rankedBlinkLabels, opts);
     sheet.blinkAverage = [];
     if ~isempty(peaks)
         sheet.blinkAverage = RELAX_QC_blink_average(baseline, cleanedEEG, peaks, blinkLabels, ...
@@ -94,25 +98,48 @@ end
 
 function [windows, relativePower] = muscleWindows(cleanedEEG, baseline, filtered, trace, shownBlinkLabels, blinkLabels, opts)
     srate = cleanedEEG.srate;
+    segments = RELAX_get_segments(cleanedEEG);
     times = (0:cleanedEEG.pnts - 1) / srate;
-    centres = RELAX_screen_top_separated(times, trace, opts.nWindows, opts.windowSeconds);
+    ranked = traceWithoutSegmentEdges(trace, segments, round(opts.muscleSmoothSeconds * srate));
+    centres = RELAX_screen_top_separated(times, ranked, opts.nWindows, opts.windowSeconds);
     windows = repmat(RELAX_QC_empty_window("muscle"), 1, opts.nWindows);
     relativePower = nan(1, opts.nWindows);
     typicalPower = median(trace, 'omitnan');
     for k = 1:numel(centres)
-        windows(k) = filledWindow("muscle", centres(k), cleanedEEG, baseline, filtered, shownBlinkLabels, blinkLabels, opts);
+        windowCentre = centreInsideSegment(centres(k), segments, srate, opts.windowSeconds);
+        windows(k) = filledWindow("muscle", windowCentre, cleanedEEG, baseline, filtered, shownBlinkLabels, blinkLabels, opts);
         relativePower(k) = trace(round(centres(k) * srate) + 1) / typicalPower;
     end
-    if all(isnan(trace))
+    if all(isnan(ranked))
         [windows.note] = deal("No segment long enough to measure muscle power");
         return
     end
     for k = numel(centres) + 1 : opts.nWindows
-        windows(k).note = shortfallNote("muscle burst", "muscle bursts", numel(centres), nnz(~isnan(trace)), opts.windowSeconds);
+        windows(k).note = shortfallNote("muscle burst", "muscle bursts", numel(centres), nnz(~isnan(ranked)), opts.windowSeconds);
     end
 end
 
-function [windows, residual] = blinkWindows(cleanedEEG, baseline, filtered, peaks, shownBlinkLabels, blinkLabels, opts)
+function ranked = traceWithoutSegmentEdges(trace, segments, widthSamples)
+% movmean shrinks its window at a segment's ends, so a brief transient there would count double.
+    ranked = trace;
+    for s = 1:size(segments, 1)
+        first = segments(s, 1); last = segments(s, 2);
+        ranked(first : min(last, first + ceil(widthSamples / 2) - 1)) = NaN;
+        ranked(max(first, last - ceil(widthSamples / 2) + 1) : last) = NaN;
+    end
+end
+
+function centre = centreInsideSegment(centre, segments, srate, windowSeconds)
+% RELAX_QC_fill_window spans 2 * half + 1 samples around the centre sample.
+    half = round(windowSeconds / 2 * srate);
+    middle = round(centre * srate) + 1;
+    s = find(segments(:, 1) <= middle & segments(:, 2) >= middle, 1);
+    first = segments(s, 1); last = segments(s, 2);
+    if last - first < 2 * half, return, end
+    centre = (min(max(middle, first + half), last - half) - 1) / srate;
+end
+
+function [windows, residual] = blinkWindows(cleanedEEG, baseline, filtered, peaks, shownBlinkLabels, blinkLabels, rankedBlinkLabels, opts)
     srate = cleanedEEG.srate;
     windows = repmat(RELAX_QC_empty_window("blink"), 1, opts.nWindows);
     residual = nan(1, opts.nWindows);
@@ -120,8 +147,12 @@ function [windows, residual] = blinkWindows(cleanedEEG, baseline, filtered, peak
         [windows.note] = deal("No blink electrodes in this file");
         return
     end
+    if isempty(rankedBlinkLabels)
+        [windows.note] = deal("Every blink electrode in this file is interpolated");
+        return
+    end
     peakSeconds = (peaks - 1) / srate;
-    scores = RELAX_screen_blink_residual(cleanedEEG, peaks, blinkLabels);
+    scores = RELAX_screen_blink_residual(cleanedEEG, peaks, rankedBlinkLabels);
     centres = RELAX_screen_top_separated(peakSeconds, scores, opts.nWindows, opts.windowSeconds);
     for k = 1:numel(centres)
         windows(k) = filledWindow("blink", centres(k), cleanedEEG, baseline, filtered, shownBlinkLabels, blinkLabels, opts);

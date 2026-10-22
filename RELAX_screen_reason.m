@@ -8,7 +8,7 @@
 %   row          - one row of the table from RELAX_screen_score_table
 %   meta         - its second output (.cutoff, .metricNames, .unscreeningMetrics)
 %   baselineNote - (optional) why the before-wICA trace is missing; appended after " | "
-%                  when not empty
+%                  as "No before-wICA trace: <note>" when not empty
 %
 % Outputs:
 %   reason - string. Failing files list each flagging metric with its z; unscreened files
@@ -24,7 +24,7 @@ function reason = RELAX_screen_reason(row, meta, baselineNote)
         case "unscreened", reason = unscreenedReason(row, meta);
         otherwise,         reason = sprintf("All metrics within cutoff %.1f", meta.cutoff);
     end
-    if strlength(baselineNote) > 0, reason = reason + " | " + baselineNote; end
+    if strlength(baselineNote) > 0, reason = reason + " | No before-wICA trace: " + baselineNote; end
 end
 
 function reason = failReason(row, meta)

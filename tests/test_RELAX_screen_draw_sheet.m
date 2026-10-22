@@ -10,7 +10,7 @@ function test_RELAX_screen_draw_sheet()
 
     assert(RELAX_screen_reason(screen(2, :), meta) == "MuscleProportion is 4.2 robust SD above the dataset median (cutoff 3.0)");
     assert(RELAX_screen_reason(screen(3, :), meta) == "Not screened: BlinkRatio missing");
-    assert(RELAX_screen_reason(screen(1, :), meta, "Baseline not aligned") == "All metrics within cutoff 3.0 | Baseline not aligned");
+    assert(RELAX_screen_reason(screen(1, :), meta, "Baseline not aligned") == "All metrics within cutoff 3.0 | No before-wICA trace: Baseline not aligned");
     assert(RELAX_screen_reason(screen(1, :), meta, "") == "All metrics within cutoff 3.0");
 
     twoMissing = screen(3, :); twoMissing.NInterpolated = NaN;

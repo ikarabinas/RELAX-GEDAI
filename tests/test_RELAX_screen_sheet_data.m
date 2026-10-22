@@ -39,7 +39,51 @@ function test_RELAX_screen_sheet_data()
     assertNoBefore(RELAX_screen_sheet_data(missingExtremes, loaded.RELAX_cfg, opts));
     fprintf('sheet fixture: %d muscle windows, %d blink windows, blinkN %d, baselineNote "%s"\n', ...
         nnz([sheet.muscle.available]), nnz([sheet.blink.available]), sheet.blinkN, sheet.baselineNote);
+    test_muscle_windows_stay_off_segment_edges(loaded.RELAX_cfg);
     fprintf('test_RELAX_screen_sheet_data: PASS\n');
+end
+
+function test_muscle_windows_stay_off_segment_edges(loadedCfg)
+% A short transient at a segment's end must not outrank a longer burst further in, and the
+% window shown for the burst slides to stay inside its segment.
+    rng(7);
+    srate = 500; seconds = 20; nChan = 32;
+    chanlocs = make_qc_chanlocs(nChan);
+    eeg = eeg_emptyset(); eeg.srate = srate; eeg.nbchan = nChan; eeg.pnts = seconds * srate;
+    eeg.trials = 1; eeg.xmin = 0; eeg.chanlocs = chanlocs;
+    eeg.data = randn(nChan, eeg.pnts);
+    secondsToSamples = @(t0, t1) round(t0 * srate) + 1 : round(t1 * srate);
+    carrier = @(span, hz) sin(2 * pi * hz * (span - 1) / srate);
+    burstSpan = secondsToSamples(10, 13.5);
+    envelope = exp(-(((burstSpan - 1) / srate - 11.2) / 0.6).^2);
+    eeg.data(:, burstSpan) = eeg.data(:, burstSpan) + 20 * envelope .* carrier(burstSpan, 50);
+    transientSpan = secondsToSamples(9.8, 10);
+    eeg.data(:, transientSpan) = eeg.data(:, transientSpan) + 35 * carrier(transientSpan, 50);
+    eeg.event = struct('type', 'boundary', 'latency', 10 * srate + 0.5, 'duration', 0);
+    eeg = eeg_checkset(eeg);
+    eeg.allchan = chanlocs;
+    eeg.RELAX.ListOfChannelsAfterRejections = {chanlocs.labels};
+
+    folder = tempname; mkdir(folder); cleanup = onCleanup(@() rmdir(folder, 's'));
+    pop_saveset(eeg, 'filename', 'synthetic_RELAX.set', 'filepath', folder);
+    paths = struct('cleaned', fullfile(folder, 'synthetic_RELAX.set'), 'extremes', fullfile(folder, 'absent.set'));
+    opts = struct('windowSeconds', 3, 'nWindows', 3, 'muscleSmoothSeconds', 2, 'blinkHalfSeconds', 0.5, ...
+                  'topoHalfSeconds', 0.05, 'blinkElectrodeFallback', NaN);
+
+    sheet = RELAX_screen_sheet_data(paths, loadedCfg, opts);
+    strongest = sheet.muscle(1);
+    assert(strongest.available && abs(mean(strongest.t) - 11.2) < 0.5, 'the strongest window is the mid-segment burst, not the transient at 9.8-10 s');
+    assert(strongest.t(1) >= 10 - 1 / srate && isempty(strongest.boundaries), 'the burst window starts inside its segment and crosses no boundary');
+
+    blinkLabelsPresent = intersect(RELAX_screen_blink_labels(loadedCfg, NaN), {chanlocs.labels}, 'stable');
+    assert(~isempty(blinkLabelsPresent), 'the synthetic montage must contain a blink electrode');
+    eeg.RELAX.ListOfChannelsAfterRejections = setdiff({chanlocs.labels}, blinkLabelsPresent, 'stable');
+    pop_saveset(eeg, 'filename', 'interpolated_RELAX.set', 'filepath', folder);
+    paths.cleaned = fullfile(folder, 'interpolated_RELAX.set');
+    interpolated = RELAX_screen_sheet_data(paths, loadedCfg, opts);
+    assert(isequal(sort(interpolated.interpolatedLabels(:)), sort(blinkLabelsPresent(:))) && ~any([interpolated.blink.available]), ...
+           'blinks are not ranked on interpolated electrodes');
+    assert(all(contains([interpolated.blink.note], "interpolated")));
 end
 
 function assertConfigRefused(cfg)

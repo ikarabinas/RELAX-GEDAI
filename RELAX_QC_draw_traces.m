@@ -10,6 +10,8 @@
 %
 % Outputs:
 %   handles.before, handles.after - line handles, one per channel ([] for a missing before)
+%   handles.spacing - distance between neighbouring channels' zero lines, in data units
+%   handles.yRange  - the y limits set before any caller adjusts them
 
 function handles = RELAX_QC_draw_traces(ax, w, beforeName, afterName, style)
     hasBefore = ~isempty(w.before);
@@ -21,6 +23,8 @@ function handles = RELAX_QC_draw_traces(ax, w, beforeName, afterName, style)
     offsets = (size(reference, 1) - 1:-1:0)' * spacing;
     yRange = [-1.5 * spacing, max(offsets) + 3 * spacing];
 
+    handles.spacing = spacing;
+    handles.yRange = yRange;
     hold(ax, 'on');
     RELAX_QC_shade_window(ax, w, yRange, true, style);
     handles.before = [];

@@ -29,8 +29,6 @@ function screen = RELAX_screen_run_sheets(opts, onlyFiles)
 
     processed = fullfile(opts.myPath, opts.outputFolderName);
     [T, cfgs] = RELAX_QC_load_tables(fullfile(processed, 'PerParticipantStats'), fullfile(processed, 'Cleaned_Data'));
-    inputs = dir(fullfile(opts.myPath, '**', '*.set'));
-    inputs = inputs(~contains({inputs.folder}, 'RELAXProcessed'));
     reviewDir = fullfile(opts.outDir, 'review');
 
     n = numel(selected);
@@ -42,7 +40,7 @@ function screen = RELAX_screen_run_sheets(opts, onlyFiles)
     startWorkerPool(n);
     outcomes = cell(n, 1);
     parfor k = 1:n
-        outcomes{k} = drawOneSheet(processed, inputs, rows{k}, screen, meta, fileCfgs{k}, fileOpts{k}, reviewDir);
+        outcomes{k} = drawOneSheet(processed, rows{k}, screen, meta, fileCfgs{k}, fileOpts{k}, reviewDir);
     end
 
     for k = 1:n
@@ -82,20 +80,27 @@ function fileOpts = withBlinkFallback(opts, T, file)
     if ~isempty(hit), fileOpts.blinkElectrodeFallback = T.BlinkElectrodeFallback(hit); end
 end
 
-function outcome = drawOneSheet(processed, inputs, row, screen, meta, cfg, opts, reviewDir)
+function outcome = drawOneSheet(processed, row, screen, meta, cfg, opts, reviewDir)
     outcome = struct('status', "ok", 'message', "");
+    figuresBefore = findall(groot, 'Type', 'figure');
     try
         if isempty(cfg)
             error('RELAX_screen:noConfig', 'No saved RELAX_cfg for participant %s', row.Participant);
         end
-        paths = RELAX_QC_file_paths(processed, inputs, row.File);
+        paths = sheetPaths(processed, row.File);
         sheet = RELAX_screen_sheet_data(paths, cfg, opts);
         RELAX_screen_draw_sheet(sheet, row, screen, meta, reviewDir);
     catch err
-        close(findall(groot, 'Type', 'figure'));
+        close(setdiff(findall(groot, 'Type', 'figure'), figuresBefore));
         outcome = struct('status', "failed", 'message', string(err.message));
         warning('RELAX_screen:sheetFailed', '%s: %s', row.File, err.message);
     end
+end
+
+function paths = sheetPaths(processed, file)
+    cleanedDir = fullfile(processed, 'Cleaned_Data');
+    paths.cleaned  = char(fullfile(cleanedDir, file + RELAX_QC_cleaned_suffix(cleanedDir, file)));
+    paths.extremes = char(fullfile(processed, 'Extremes_Rejected', file + "_Extremes_Rejected.set"));
 end
 
 % A failed message from an earlier run is stale once the file succeeds; a score-stage note stays.
@@ -112,8 +117,9 @@ end
 % Each SLURM job needs its own job storage, or concurrent pools clobber each other.
 function startWorkerPool(nFiles)
     if ~isempty(gcp('nocreate')) || nFiles == 0, return, end
-    nWorkers = min(nFiles, max(1, str2double(getenv('SLURM_CPUS_PER_TASK'))));
+    nWorkers = str2double(getenv('SLURM_CPUS_PER_TASK'));
     if isnan(nWorkers), return, end
+    nWorkers = min(nFiles, max(1, nWorkers));
     cluster = parcluster('local');
     storage = fullfile(getenv('TMPDIR'), sprintf('residual_screen_%s', getenv('SLURM_JOB_ID')));
     if ~isempty(getenv('TMPDIR')) && ~isempty(getenv('SLURM_JOB_ID'))
