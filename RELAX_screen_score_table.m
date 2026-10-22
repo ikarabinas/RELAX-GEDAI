@@ -13,7 +13,7 @@
 %
 % Outputs:
 %   screen - one row per row of T: File, Participant, PipelineOutcome; for each metric <M>,
-%            <M>_median, <M>_scale, <M>_z; ScreenOutcome, FlaggedBy, InReviewSample,
+%            <M>_median, <M>_scale, <M>_z, <M>_flag; ScreenOutcome, FlaggedBy, InReviewSample,
 %            SheetStatus ("" until the sheets stage) and SheetMessage
 %   meta   - .cutoff, .sampleSize, .seed, .nCleaned, .created, .metricNames and
 %            .zeroScaleMetrics (metrics whose scale is not positive, so they cannot flag)
@@ -41,6 +41,7 @@ function [screen, meta] = RELAX_screen_score_table(T, metrics, opts)
         screen.(name + "_median") = repmat(centre, nFiles, 1);
         screen.(name + "_scale") = repmat(scale, nFiles, 1);
         screen.(name + "_z") = zScores(:, m);
+        screen.(name + "_flag") = zScores(:, m) > opts.cutoff & isCleaned;
     end
 
     [screen.ScreenOutcome, screen.FlaggedBy] = RELAX_screen_outcome(T.Outcome, values, zScores, opts.cutoff, ...

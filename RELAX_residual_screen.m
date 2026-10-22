@@ -16,6 +16,7 @@ function RELAX_residual_screen(stage, onlyFiles)
     seed = 20261022;
 
     if nargin < 1, stage = 'all'; end
+    stage = validatestring(stage, {'score', 'all'});
     if nargin < 2, onlyFiles = {}; end %#ok<NASGU>
 
     outDir = fullfile(myPath, outputFolderName, 'Residual_screen');

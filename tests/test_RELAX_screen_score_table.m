@@ -13,6 +13,9 @@ function test_RELAX_screen_score_table()
     assert(s.ScreenOutcome(4) == "unscreened" && s.ScreenOutcome(8) == "notCleaned");
     assert(all(isnan(s.NInterpolated_z)) && any(meta.zeroScaleMetrics == "NInterpolated"));
     assert(sum(s.InReviewSample) == 2 && all(s.ScreenOutcome(s.InReviewSample) == "pass"));
+    assert(s.MuscleProportion_flag(6) && ~s.MuscleProportion_flag(1), 'flag is true only for the outlier');
+    assert(~s.MuscleProportion_flag(8), 'a non-cleaned row never flags');
+    assert(~any(s.NInterpolated_flag), 'a zero-scale metric never flags');
     rng(0); before = rand;
     rng(0); s2 = RELAX_screen_score_table(T, metrics, opts); after = rand;
     assert(isequal(s.InReviewSample, s2.InReviewSample) && before == after, 'seeded, and leaves global rng alone');

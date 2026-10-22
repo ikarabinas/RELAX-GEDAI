@@ -13,14 +13,14 @@ function [screen, meta] = RELAX_screen_run_score(opts)
 
     processed = fullfile(opts.myPath, opts.outputFolderName);
     [T, cfgs] = RELAX_QC_load_tables(fullfile(processed, 'PerParticipantStats'), fullfile(processed, 'Cleaned_Data'));
-    inputs = dir(fullfile(opts.myPath, '**', '*.set'));
-    inputs = inputs(~contains({inputs.folder}, 'RELAXProcessed'));
+    cleanedDir = fullfile(processed, 'Cleaned_Data');
 
     nFiles = height(T);
     metrics = repmat(nanMetrics(), nFiles, 1);
     headerMessages = strings(nFiles, 1);
     for f = find(T.Outcome == "cleaned")'
-        [metrics(f), headerMessages(f)] = measureOneFile(processed, inputs, T(f, :), cfgs(char(T.Participant(f))));
+        cleanedPath = fullfile(cleanedDir, T.File(f) + RELAX_QC_cleaned_suffix(cleanedDir, T.File(f)));
+        [metrics(f), headerMessages(f)] = measureOneFile(cleanedPath, T(f, :), cfgs(char(T.Participant(f))));
         fprintf('RELAX_screen_run_score %d/%d %s %s\n', f, nFiles, T.File(f), headerMessages(f));
     end
 
@@ -38,25 +38,34 @@ function m = nanMetrics()
     m = struct('MuscleProportion', NaN, 'MuscleStrength', NaN, 'BlinkRatio', NaN, 'NInterpolated', NaN);
 end
 
-function [m, message] = measureOneFile(processed, inputs, row, cfg)
-    message = "";
-    try
-        paths = RELAX_QC_file_paths(processed, inputs, row.File);
-        header = pop_loadset('filename', paths.cleaned, 'loadmode', 'info');
+function [m, message] = measureOneFile(cleanedPath, row, cfg)
+    [header, message] = loadHeader(cleanedPath);
+    if message == ""
         m = RELAX_screen_file_metrics(row, cfg, {header.allchan.labels}, ...
                                       string(header.RELAX.ListOfChannelsAfterRejections));
-    catch err
+    else
         m = nanMetrics();
         m.MuscleProportion = row.TableCleanedMuscleProportion;
         m.MuscleStrength = row.TableCleanedMuscleStrength;
+        warning('RELAX_screen:headerUnreadable', '%s: %s', row.File, message);
+    end
+end
+
+function [header, message] = loadHeader(cleanedPath)
+    header = [];
+    message = "";
+    try
+        header = pop_loadset('filename', char(cleanedPath), 'loadmode', 'info');
+    catch err
         message = string(err.message);
-        warning('RELAX_screen:headerUnreadable', '%s: %s', row.File, err.message);
     end
 end
 
 function writeCsv(screen, csvPath)
     forCsv = screen;
-    forCsv.InReviewSample = double(forCsv.InReviewSample);
+    for column = string(forCsv.Properties.VariableNames)
+        if islogical(forCsv.(column)), forCsv.(column) = double(forCsv.(column)); end
+    end
     writetable(forCsv, csvPath);
 end
 
@@ -71,7 +80,10 @@ function writeReadme(screen, meta, readmePath)
         "", ...
         "- " + outcomeCounts(screen), ...
         "", ...
-        "A metric flags a file when its robust z (median/MAD) exceeds the cutoff. A file with a missing metric that no other metric flags is unscreened.", ...
+        "A metric flags a file when its robust z exceeds the cutoff; the <metric>_flag columns hold those flags. " + ...
+        "A file is unscreened when a metric other than the muscle slope is missing and no metric flags it.", ...
+        "", ...
+        "The <metric>_scale columns are the robust SD that z divides by: 1.4826 * MAD, or 1.2533 * mean|x - median| when MAD is 0.", ...
         ""];
     for metric = meta.zeroScaleMetrics
         lines(end + 1) = sprintf("%s has no spread across the cleaned files, so it cannot flag any file in this run.", metric); %#ok<AGROW>
