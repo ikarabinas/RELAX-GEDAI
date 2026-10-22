@@ -59,7 +59,7 @@ function [continuousEEG, epochedEEG] = RELAX_blinks_IQR_method(continuousEEG, ep
     BlinkElectrodeFallback = 0;
     if length(available_blink_electrodes) < 2
         % Backup blink electrodes (one row higher on EEG layout)
-        backup_electrodes = {'E12'; 'E20'; 'E27'; 'E34'; 'E21'};
+        backup_electrodes = RELAX_backup_blink_electrodes();
         RELAX_cfg.BlinkElectrodes = [RELAX_cfg.BlinkElectrodes(:); backup_electrodes];
         available_blink_electrodes = intersect(RELAX_cfg.BlinkElectrodes, available_channels);
         if length(available_blink_electrodes) >= 2
