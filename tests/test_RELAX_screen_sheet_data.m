@@ -24,6 +24,7 @@ function test_RELAX_screen_sheet_data()
     unavailable = ~[sheet.muscle.available];
     assert(all(isnan(sheet.muscleSlope(unavailable))) && all(sheet.muscleSlopeChannel(unavailable) == ""));
     assert(all(isfinite(sheet.muscleSlope(~unavailable))) && all(strlength(sheet.muscleSlopeChannel(~unavailable)) > 0));
+    assert(all(isnan(sheet.muscleEpochStart(unavailable))) && all(isfinite(sheet.muscleEpochStart(~unavailable))));
     for k = find(~unavailable)
         assert(ismember(sheet.muscleSlopeChannel(k), string(sheet.muscle(k).channels)), 'a muscle window shows the channel with the epoch''s highest slope');
         assert(numel(sheet.muscle(k).channels) <= 6);
@@ -40,7 +41,7 @@ function test_RELAX_screen_sheet_data()
     lowPassedCfg = loaded.RELAX_cfg; lowPassedCfg.LowPassFilter = 60;
     withoutSlopes = RELAX_screen_sheet_data(paths, lowPassedCfg, opts);
     assert(~any([withoutSlopes.muscle.available]) && all(contains([withoutSlopes.muscle.note], "60 Hz")), 'without slopes every muscle window says why');
-    assert(all(isnan(withoutSlopes.muscleSlope)) && all(withoutSlopes.muscleSlopeChannel == "") && any([withoutSlopes.blink.available]), 'blink windows are unaffected');
+    assert(all(isnan(withoutSlopes.muscleEpochStart)) && all(isnan(withoutSlopes.muscleSlope)) && all(withoutSlopes.muscleSlopeChannel == "") && any([withoutSlopes.blink.available]), 'blink windows are unaffected');
     refusedCfg = loaded.RELAX_cfg; refusedCfg.Run_GEDAI = 1; refusedCfg.GEDAI_BroadbandOnly = false;
     assertConfigRefused(refusedCfg);
     sheetWithoutBaseline = RELAX_screen_sheet_data(paths, refusedCfg, opts);
@@ -117,6 +118,7 @@ function test_top_slope_channel_is_drawn_when_it_is_an_unshown_blink_electrode(l
     sheet = RELAX_screen_sheet_data(paths, loadedCfg, opts);
     strongest = sheet.muscle(1);
     assert(sheet.muscleSlopeChannel(1) == quietBlinkLabel, 'the burst electrode holds the highest slope');
+    assert(sheet.muscleEpochStart(1) > 3 && sheet.muscleEpochStart(1) < 5, 'the first muscle epoch overlaps the 4-5 s burst');
     assert(ismember(quietBlinkLabel, strongest.channels) && ~ismember(quietBlinkLabel, blinkLabels(1:4)), 'it is drawn though it is not one of the 4 blink electrodes shown');
     assert(numel(strongest.channels) == 6, 'four blink electrodes plus the two highest-slope others');
 end

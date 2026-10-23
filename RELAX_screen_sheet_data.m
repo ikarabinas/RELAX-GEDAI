@@ -33,6 +33,7 @@
 %                         available = false with a note when the file has too few candidates
 %   muscleSlope         - [1 x nWindows] the highest slope over channels in each window's epoch;
 %                         NaN for unavailable windows
+%   muscleEpochStart    - [1 x nWindows] start in seconds of each window's epoch; NaN for unavailable windows
 %   muscleSlopeChannel  - [1 x nWindows] string, the channel holding that slope; "" for unavailable windows
 %   muscleSlopeThreshold - cfg.MuscleSlopeThreshold
 %   blinkResidual       - [1 x nWindows] microvolts left at each window's blink
@@ -58,7 +59,7 @@ function sheet = RELAX_screen_sheet_data(paths, cfg, opts)
     sheet.interpolatedReasons = RELAX_screen_channel_reasons(cleanedEEG);
     sheet.baselineNote = baselineNote;
     sheet.muscleSlopeThreshold = slopes.threshold;
-    [sheet.muscle, sheet.muscleSlope, sheet.muscleSlopeChannel] = muscleWindows(cleanedEEG, baseline, slopes, shownBlinkLabels, opts);
+    [sheet.muscle, sheet.muscleSlope, sheet.muscleSlopeChannel, sheet.muscleEpochStart] = muscleWindows(cleanedEEG, baseline, slopes, shownBlinkLabels, opts);
 
     peaks = unique(RELAX_QC_blink_peaks(cleanedEEG, round(max(opts.blinkHalfSeconds, 0.5) * srate)));
     sheet.blinkN = numel(peaks);
@@ -104,11 +105,12 @@ function [baseline, note] = loadBaseline(paths, cfg, cleanedEEG)
     end
 end
 
-function [windows, slope, slopeChannel] = muscleWindows(cleanedEEG, baseline, slopes, shownBlinkLabels, opts)
+function [windows, slope, slopeChannel, epochStart] = muscleWindows(cleanedEEG, baseline, slopes, shownBlinkLabels, opts)
     srate = cleanedEEG.srate;
     windows = repmat(RELAX_QC_empty_window("muscle"), 1, opts.nWindows);
     slope = nan(1, opts.nWindows);
     slopeChannel = strings(1, opts.nWindows);
+    epochStart = nan(1, opts.nWindows);
     if isempty(slopes.values)
         [windows.note] = deal(slopes.note);
         return
@@ -125,6 +127,7 @@ function [windows, slope, slopeChannel] = muscleWindows(cleanedEEG, baseline, sl
         epoch = sharingCentre(best);
         [~, loudestRow] = max(slopes.values(:, epoch));
         slopeChannel(k) = slopes.labels(loudestRow);
+        epochStart(k) = slopes.startSeconds(epoch);
         windows(k) = filledMuscleWindow(centres(k), cleanedEEG, baseline, slopes, epoch, shownBlinkLabels, opts);
     end
     for k = numel(centres) + 1 : opts.nWindows

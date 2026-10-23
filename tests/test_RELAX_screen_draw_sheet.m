@@ -59,9 +59,12 @@ function test_RELAX_screen_draw_sheet()
 
     manyLabels = arrayfun(@(k) sprintf('E%d', k), 1:24, 'UniformOutput', false);
     crowded = sheet; crowded.interpolatedLabels = manyLabels;
+    crowded.interpolatedReasons = struct('labels', string(manyLabels), 'reasons', repmat("muscle", 1, 24), ...
+                                         'groups', struct('reason', "muscle", 'labels', string(manyLabels)));
     crowdedRow = screen(2, :); crowdedRow.HoleElectrodes = strjoin(string(manyLabels), " ");
     drawWithHoleMarkerWarningFatal(crowded, crowdedRow, screen, meta, fullfile(reviewDir, 'crowded'));
     crowdedNoBlinks = noBlinks; crowdedNoBlinks.interpolatedLabels = manyLabels;
+    crowdedNoBlinks.interpolatedReasons = crowded.interpolatedReasons;
     drawWithHoleMarkerWarningFatal(crowdedNoBlinks, crowdedRow, screen, meta, fullfile(reviewDir, 'crowdedNoBlinks'));
     assert(isfile(fullfile(reviewDir, 'crowded', 'f2.png')) && isfile(fullfile(reviewDir, 'crowdedNoBlinks', 'f2.png')));
 
@@ -89,11 +92,16 @@ function [screen, meta, sheet] = syntheticSheet()
     channelsShown = {'E1', 'E2', 'E5', 'E9', 'E12', 'E20'};
     window = @(kind, centre) RELAX_QC_fill_window(RELAX_QC_empty_window(kind), centre, before, cleaned, channelsShown, 3);
     sheet.chanlocs = chanlocs;
-    sheet.interpolatedLabels = {'E5'};
+    sheet.interpolatedLabels = {'E5', 'E9'};
+    sheet.interpolatedReasons = struct('labels', ["E5" "E9"], 'reasons', ["muscle" "impedance"], ...
+                                       'groups', struct('reason', {"impedance", "muscle"}, 'labels', {"E9", "E5"}));
     sheet.baselineNote = "";
     sheet.muscle = [window("muscle", 10), window("muscle", 25), window("muscle", 40)];
     sheet.blink = [window("blink", 12), window("blink", 30), window("blink", 50)];
     sheet.muscleSlope = [-0.1 -0.2 -0.4];
+    sheet.muscleSlopeChannel = ["E1" "E5" "E12"];
+    sheet.muscleSlopeThreshold = -0.31;
+    sheet.muscleEpochStart = [9.5 24.5 39.5];
     sheet.blinkResidual = [31 22 18];
     peaks = [1500 3000 4500];
     sheet.blinkN = numel(peaks);
