@@ -68,8 +68,8 @@ function test_RELAX_screen_draw_sheet()
     drawWithHoleMarkerWarningFatal(crowdedNoBlinks, crowdedRow, screen, meta, fullfile(reviewDir, 'crowdedNoBlinks'));
     assert(isfile(fullfile(reviewDir, 'crowded', 'f2.png')) && isfile(fullfile(reviewDir, 'crowdedNoBlinks', 'f2.png')));
 
-    allZero = screen; allZero.MuscleStrength_z(:) = NaN;
-    meta.zeroScaleMetrics = "MuscleStrength";
+    allZero = screen; allZero.BlinkRatio_z(:) = NaN;
+    meta.zeroScaleMetrics = "BlinkRatio";
     RELAX_screen_draw_sheet(sheet, allZero(1, :), allZero, meta, fullfile(reviewDir, 'zeroScale'));
 
     for f = ["f2", "f1", "f3"], for ext = [".png", ".pdf"]

@@ -24,8 +24,10 @@ function test_RELAX_screen_score_table()
     assert(s.ScreenOutcome(4) == "unscreened" && s.ScreenOutcome(8) == "notCleaned");
     assert(~ismember("NInterpolated_z", string(s.Properties.VariableNames)) && ~any(meta.zeroScaleMetrics == "NInterpolated"));
     assert(isequal(meta.unscreeningMetrics, ["MuscleProportion", "BlinkRatio", "HoleDepth"]));
-    assert(isequal(meta.metricNames, ["MuscleProportion", "MuscleStrength", "BlinkRatio", "HoleDepth", "NInterpolated"]));
-    assert(isequal(meta.zMetricNames, ["MuscleProportion", "MuscleStrength", "BlinkRatio"]));
+    assert(isequal(meta.metricNames, ["MuscleProportion", "BlinkRatio", "HoleDepth", "NInterpolated"]));
+    assert(isequal(meta.zMetricNames, ["MuscleProportion", "BlinkRatio"]));
+    assert(isequal(s.MuscleStrength, -0.3 * ones(n, 1)), 'MuscleStrength is kept as a covariate');
+    assert(~any(startsWith(string(s.Properties.VariableNames), "MuscleStrength_")), 'MuscleStrength has no median, scale, z or flag');
     assert(meta.holeDepthLimit == 1.4);
     assert(meta.medianSpacing == 0.02, 'median spacing over cleaned files only');
     assert(sum(s.InReviewSample) == 2 && all(s.ScreenOutcome(s.InReviewSample) == "pass"));
@@ -43,8 +45,9 @@ function test_RELAX_screen_score_table()
     assert(all(s.NChannels(1:7) == 203) && all(s.MaxProportionDeleted(1:7) == 0.25));
     columns = string(s.Properties.VariableNames);
     assert(isequal(columns(1:3), ["File", "Participant", "PipelineOutcome"]));
-    assert(isequal(columns(4:8), ["MuscleProportion", "MuscleProportion_median", "MuscleProportion_scale", "MuscleProportion_z", "MuscleProportion_flag"]));
-    assert(isequal(columns(19:end), ["HoleDepth", "HoleDepth_limit", "HoleDepth_flag", "HoleDeepestElectrode", "HoleElectrodes", ...
+    assert(isequal(columns(4:13), ["MuscleProportion", "MuscleProportion_median", "MuscleProportion_scale", "MuscleProportion_z", "MuscleProportion_flag", ...
+        "BlinkRatio", "BlinkRatio_median", "BlinkRatio_scale", "BlinkRatio_z", "BlinkRatio_flag"]));
+    assert(isequal(columns(14:end), ["MuscleStrength", "HoleDepth", "HoleDepth_limit", "HoleDepth_flag", "HoleDeepestElectrode", "HoleElectrodes", ...
         "NInterpolated", "NInterpolated_limit", "NInterpolated_flag", "NChannels", "MaxProportionDeleted", ...
         "InterpolatedReasons", "NInterpolated_impedance", "NInterpolated_pop", "NInterpolated_bridged", "NInterpolated_PREP", ...
         "NInterpolated_extreme", "NInterpolated_muscle", "NInterpolated_unknown", ...
@@ -62,5 +65,11 @@ function test_RELAX_screen_score_table()
     justBelowCutoff = opts; justBelowCutoff.cutoff = s.MuscleProportion_z(6) - 1e-9;
     s5 = RELAX_screen_score_table(T, metrics, justBelowCutoff);
     assert(s5.MuscleProportion_flag(6), 'a z just above the cutoff flags');
+    strengthOutlier = metrics; strengthOutlier(2).MuscleStrength = 50;
+    s6 = RELAX_screen_score_table(T, strengthOutlier, opts);
+    assert(s6.MuscleStrength(2) == 50 && s6.ScreenOutcome(2) == "pass" && s6.FlaggedBy(2) == "", 'a MuscleStrength outlier does not flag');
+    strengthMissing = metrics; strengthMissing(2).MuscleStrength = NaN;
+    s7 = RELAX_screen_score_table(T, strengthMissing, opts);
+    assert(s7.ScreenOutcome(2) == "pass", 'a missing MuscleStrength does not leave a file unscreened');
     fprintf('test_RELAX_screen_score_table: PASS\n');
 end

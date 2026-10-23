@@ -28,6 +28,8 @@ function test_RELAX_screen_run_score()
     assert(contains(readme, "lies inside the 3 s window around it") && contains(readme, "each blink window shows up to 4 blink electrodes"), 'README guide says what the captions time and which channels each window shows');
     assert(contains(readme, "'(interp., <reason>)'") && contains(readme, "Interpolated for <reason>"), 'README guide describes the reasons drawn on the sheet');
     assert(contains(readme, "BlinkRatio or HoleDepth is missing"), 'README names the unscreening metrics');
+    assert(contains(readme, "MuscleProportion and BlinkRatio flag a file") && contains(readme, "MuscleStrength is kept as a covariate and no longer flags"), 'README says which metrics flag by robust z');
+    assert(~contains(readme, "MuscleProportion, MuscleStrength and BlinkRatio") && ~contains(readme, "missing MuscleStrength"), 'README no longer lists MuscleStrength as a flagging metric');
     assert(~isnan(screen.BlinkRatio) || strlength(screen.SheetMessage) > 0, 'a missing BlinkRatio is explained');
     assert(~isempty(meta.zeroScaleMetrics));
     csv = readtable(fullfile(outDir, 'residual_screen.csv'));

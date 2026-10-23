@@ -18,8 +18,8 @@
 % Outputs:
 %   screen - one row per row of T, with the columns
 %              File, Participant, PipelineOutcome;
-%              for MuscleProportion, MuscleStrength and BlinkRatio: <M>, <M>_median, <M>_scale,
-%                <M>_z, <M>_flag;
+%              for MuscleProportion and BlinkRatio: <M>, <M>_median, <M>_scale, <M>_z, <M>_flag;
+%              MuscleStrength (a covariate: it has no z and never flags);
 %              HoleDepth, HoleDepth_limit, HoleDepth_flag, HoleDeepestElectrode, HoleElectrodes;
 %              NInterpolated, NInterpolated_limit (flags when the count reaches it),
 %                NInterpolated_flag, NChannels, MaxProportionDeleted;
@@ -40,9 +40,9 @@
 
 function [screen, meta] = RELAX_screen_score_table(T, metrics, opts)
 
-    zMetricNames = ["MuscleProportion", "MuscleStrength", "BlinkRatio"];
+    zMetricNames = ["MuscleProportion", "BlinkRatio"];
     metricNames = [zMetricNames, "HoleDepth", "NInterpolated"];
-    missingMakesUnscreened = [true false true true false];
+    missingMakesUnscreened = [true true true false];
     nFiles = height(T);
     isCleaned = T.Outcome == "cleaned";
 
@@ -62,6 +62,8 @@ function [screen, meta] = RELAX_screen_score_table(T, metrics, opts)
         screen.(name + "_z") = z;
         screen.(name + "_flag") = flagged(:, m);
     end
+
+    screen.MuscleStrength = [metrics.MuscleStrength]';
 
     depthColumn = numel(zMetricNames) + 1;
     values(:, depthColumn) = [metrics.HoleDepth]';

@@ -15,7 +15,7 @@
 %   reason - string. Failing files list each flagging metric in meta.metricNames order: a z-scored
 %            metric with its z, the hole with its depth and deepest electrode, the interpolated
 %            count with the pipeline's limit; unscreened files list the missing metrics of
-%            meta.unscreeningMetrics (a missing MuscleStrength never leaves a file unscreened);
+%            meta.unscreeningMetrics (a missing NInterpolated never leaves a file unscreened);
 %            passing files state the cutoff and the hole-depth limit.
 
 function reason = RELAX_screen_reason(row, meta, baselineNote)
