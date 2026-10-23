@@ -61,6 +61,11 @@ function test_RELAX_screen_channel_reasons()
     numericPlaceholder.RELAXProcessingExtremeRejections.MuscleBasedElectrodesToReject = 0;
     r = RELAX_screen_channel_reasons(numericPlaceholder);
     assert(isequal(r.reasons, ["pop (rate)" "pop (flat)" "impedance" "unknown" "unknown"]), 'a numeric placeholder is no label');
+
+    oneInterpolated = header();
+    oneInterpolated.RELAX.ListOfChannelsAfterRejections = setdiff(compose('E%d', (1:8)'), {'E5'});
+    r = RELAX_screen_channel_reasons(oneInterpolated);
+    assert(r.summary == "impedance: E5" && isscalar(r.groups) && r.counts.impedance == 1, 'a single interpolated electrode forms a single group');
     fprintf('test_RELAX_screen_channel_reasons: PASS\n');
 end
 

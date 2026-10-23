@@ -50,7 +50,7 @@ function reasons = RELAX_screen_channel_reasons(EEG)
         'groups', struct('reason', {}, 'labels', {}));
     for reasonName = reasonNames
         reasons.counts.(reasonName) = nnz(baseReasons == reasonName);
-        groupReasons = unique(fullReasons(baseReasons == reasonName), 'stable');
+        groupReasons = reshape(unique(fullReasons(baseReasons == reasonName), 'stable'), 1, []);
         for groupReason = groupReasons
             reasons.groups(end + 1) = struct('reason', groupReason, 'labels', labels(fullReasons == groupReason));
         end
