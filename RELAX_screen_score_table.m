@@ -9,8 +9,9 @@
 %   metrics - [n x 1] struct array in the row order of T with the fields MuscleProportion,
 %             MuscleStrength, BlinkRatio, NInterpolated, HoleDepth, HoleDeepestElectrode (string),
 %             HoleElectrodes (string), Spacing, NInterpolatedLimit, NChannels and
-%             MaxProportionDeleted (RELAX_screen_file_metrics); NaN (strings "") for files that are
-%             not cleaned
+%             MaxProportionDeleted (RELAX_screen_file_metrics), and InterpolatedReasons (string) with
+%             NInterpolated_impedance, _pop, _bridged, _PREP, _extreme, _muscle and _unknown
+%             (RELAX_screen_channel_reasons); NaN (strings "") for files that are not cleaned
 %   opts    - .cutoff (a z-scored metric flags when z > cutoff), .holeDepthLimit (HoleDepth flags
 %             when above it), .sampleSize (passing files drawn for review), .seed
 %
@@ -22,6 +23,10 @@
 %              HoleDepth, HoleDepth_limit, HoleDepth_flag, HoleDeepestElectrode, HoleElectrodes;
 %              NInterpolated, NInterpolated_limit (flags when the count reaches it),
 %                NInterpolated_flag, NChannels, MaxProportionDeleted;
+%              InterpolatedReasons (why each interpolated channel was removed, as 'muscle: E33 E34;
+%                impedance: E5') and the counts NInterpolated_impedance, NInterpolated_pop,
+%                NInterpolated_bridged, NInterpolated_PREP, NInterpolated_extreme,
+%                NInterpolated_muscle and NInterpolated_unknown;
 %              ScreenOutcome, FlaggedBy, InReviewSample, SheetStatus ("" until the sheets stage)
 %                and SheetMessage
 %   meta   - .cutoff, .holeDepthLimit, .sampleSize, .seed, .nCleaned, .created, .medianSpacing (of
@@ -76,6 +81,10 @@ function [screen, meta] = RELAX_screen_score_table(T, metrics, opts)
     screen.NInterpolated_flag = flagged(:, countColumn);
     screen.NChannels = [metrics.NChannels]';
     screen.MaxProportionDeleted = [metrics.MaxProportionDeleted]';
+    screen.InterpolatedReasons = [metrics.InterpolatedReasons]';
+    for reasonName = ["impedance" "pop" "bridged" "PREP" "extreme" "muscle" "unknown"]
+        screen.("NInterpolated_" + reasonName) = [metrics.("NInterpolated_" + reasonName)]';
+    end
 
     [screen.ScreenOutcome, screen.FlaggedBy] = RELAX_screen_outcome(T.Outcome, values, flagged, ...
                                                                     metricNames, missingMakesUnscreened);

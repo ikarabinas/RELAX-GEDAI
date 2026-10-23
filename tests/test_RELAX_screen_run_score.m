@@ -7,6 +7,9 @@ function test_RELAX_screen_run_score()
     [screen, meta] = RELAX_screen_run_score(opts);
     assert(any(screen.File == "boundary_fixture"));
     assert(screen.NInterpolated(screen.File == "boundary_fixture") == 5, 'interpolated = allchan minus kept channels');
+    reasonCounts = screen{:, "NInterpolated_" + ["impedance" "pop" "bridged" "PREP" "extreme" "muscle" "unknown"]};
+    assert(screen.NInterpolated == sum(reasonCounts), 'the reason counts add up to the interpolated channels');
+    assert(screen.NInterpolated == 0 || strlength(screen.InterpolatedReasons) > 0, 'every interpolated channel has a reason');
     assert(isfinite(screen.HoleDepth(screen.File == "boundary_fixture")), 'the hole is measured from the electrode coordinates');
     for f = ["residual_screen.mat", "residual_screen.csv", "README.md"]
         assert(isfile(fullfile(outDir, f)), 'missing %s', f);
@@ -17,6 +20,7 @@ function test_RELAX_screen_run_score()
     assert(contains(readme, "No before-wICA trace:") && contains(readme, "separate line for each metric") && contains(readme, "Clear that folder"), 'README guide explains the header lines and stale sheets');
     assert(contains(readme, "Open rings mark electrodes that were interpolated") && contains(readme, "3 s each"), 'README guide describes the drawn sheet');
     assert(contains(readme, "Amber filled electrodes mark the hole") && contains(readme, "NInterpolated_limit"), 'README guide describes the hole rule and the channel limit');
+    assert(contains(readme, "InterpolatedReasons") && contains(readme, "NInterpolated_<reason>"), 'README explains the removal reasons');
     assert(contains(readme, "BlinkRatio or HoleDepth is missing"), 'README names the unscreening metrics');
     assert(~isnan(screen.BlinkRatio) || strlength(screen.SheetMessage) > 0, 'a missing BlinkRatio is explained');
     assert(~isempty(meta.zeroScaleMetrics));
@@ -45,6 +49,7 @@ function assertUnscreenedWithHeader(fixtures, healthyScreen, writeCleanedFile, e
     assert(screen.ScreenOutcome == "unscreened" && strlength(screen.SheetMessage) > 0);
     assert(contains(screen.SheetMessage, expectedMessagePart));
     assert(isnan(screen.NInterpolated) && isnan(screen.BlinkRatio) && isnan(screen.HoleDepth));
+    assert(all(isnan(screen{:, "NInterpolated_" + ["impedance" "pop" "bridged" "PREP" "extreme" "muscle" "unknown"]})) && screen.InterpolatedReasons == "");
     assert(screen.MuscleProportion == healthyScreen.MuscleProportion && screen.MuscleStrength == healthyScreen.MuscleStrength);
 end
 
