@@ -33,5 +33,13 @@ function test_RELAX_screen_run_sheets()
     catch err
         assert(strcmp(err.identifier, 'RELAX_screen:unknownFile'), err.message);
     end
+
+    screen = removevars(saved.screen, 'HoleDepth'); meta = saved.meta;
+    save(fullfile(outDir, 'residual_screen.mat'), 'screen', 'meta');
+    try
+        RELAX_screen_run_sheets(opts, {}); error('should have thrown');
+    catch err
+        assert(strcmp(err.identifier, 'RELAX_screen:staleScore') && contains(err.message, 'score'), err.message);
+    end
     fprintf('test_RELAX_screen_run_sheets: PASS\n');
 end

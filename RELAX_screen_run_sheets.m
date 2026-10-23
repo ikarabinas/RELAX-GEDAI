@@ -9,7 +9,8 @@
 % onlyFiles: cell or string array of base names; empty means the files that fail, are
 % unscreened or are in the review sample. An unknown name raises RELAX_screen:unknownFile.
 %
-% Loads <outDir>/residual_screen.mat, writes <outDir>/review/<File>.png/.pdf for each selected
+% Loads <outDir>/residual_screen.mat (a table scored before the HoleDepth column existed raises
+% RELAX_screen:staleScore: run the score stage again), writes <outDir>/review/<File>.png/.pdf for each selected
 % file, and rewrites residual_screen.mat and .csv with SheetStatus "ok" or "failed". A file that
 % fails (SheetMessage = the error) does not stop the others. Rows that were not selected are
 % left as they were.
@@ -20,6 +21,10 @@ function screen = RELAX_screen_run_sheets(opts, onlyFiles)
     loaded = load(fullfile(opts.outDir, 'residual_screen.mat'), 'screen', 'meta');
     screen = loaded.screen;
     meta = loaded.meta;
+    if ~ismember('HoleDepth', screen.Properties.VariableNames)
+        error('RELAX_screen:staleScore', ...
+              'The saved screen table has no HoleDepth column, so it predates the hole-depth rule. Run the score stage again.');
+    end
 
     selected = find(selectedRows(screen, string(onlyFiles)))';
     if isempty(selected)

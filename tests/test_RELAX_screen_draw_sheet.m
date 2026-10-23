@@ -1,25 +1,32 @@
 function test_RELAX_screen_draw_sheet()
 % The reason text names flagging or missing metrics (missing slope never listed, extra note
 % appended, notCleaned handled); a sheet is saved for a failing file, a file without a
-% baseline, a file without blinks, a screen with a zero-scale metric, and a file whose z is
-% far beyond the strip plots' range.
+% baseline, a file without blinks, a screen with a zero-scale metric, a file whose z is
+% far beyond the strip plots' range, a file whose hole depth is missing and a depth beyond its strip.
 
     reviewDir = tempname; cleanup = onCleanup(@() removeIfPresent(reviewDir));
     figuresBefore = numel(findall(groot, 'Type', 'figure'));
     [screen, meta, sheet] = syntheticSheet();
 
-    assert(RELAX_screen_reason(screen(2, :), meta) == "MuscleProportion is 4.2 robust SD above the dataset median (cutoff 3.0)");
+    muscleSentence = "MuscleProportion is 4.2 robust SD above the dataset median (cutoff 3.0)";
+    holeSentence = "Interpolation hole 1.7× electrode spacing deep at E5 (limit 1.4)";
+    assert(RELAX_screen_reason(screen(2, :), meta) == muscleSentence + "; " + holeSentence);
+    holeOnly = screen(2, :); holeOnly.MuscleProportion_flag = false;
+    assert(RELAX_screen_reason(holeOnly, meta) == holeSentence);
+    channelLimit = screen(1, :); channelLimit.ScreenOutcome = "fail"; channelLimit.NInterpolated = 50; channelLimit.NInterpolated_flag = true;
+    channelLimit.NInterpolated_limit = 50; channelLimit.NChannels = 203; channelLimit.MaxProportionDeleted = 0.25;
+    assert(RELAX_screen_reason(channelLimit, meta) == "50 channels interpolated, the pipeline's limit of 50 (25% of 203): bad channels may remain");
     assert(RELAX_screen_reason(screen(3, :), meta) == "Not screened: BlinkRatio missing");
-    assert(RELAX_screen_reason(screen(1, :), meta, "Baseline not aligned") == "All metrics within cutoff 3.0 | No before-wICA trace: Baseline not aligned");
-    assert(RELAX_screen_reason(screen(1, :), meta, "") == "All metrics within cutoff 3.0");
+    passLine = "All metrics within cutoff 3.0, hole depth within limit 1.4";
+    assert(RELAX_screen_reason(screen(1, :), meta, "Baseline not aligned") == passLine + " | No before-wICA trace: Baseline not aligned");
+    assert(RELAX_screen_reason(screen(1, :), meta, "") == passLine);
 
-    twoMissing = screen(3, :); twoMissing.NInterpolated = NaN;
-    assert(RELAX_screen_reason(twoMissing, meta) == "Not screened: BlinkRatio, NInterpolated missing");
+    twoMissing = screen(3, :); twoMissing.HoleDepth = NaN;
+    assert(RELAX_screen_reason(twoMissing, meta) == "Not screened: BlinkRatio, HoleDepth missing");
     slopeAndRatioMissing = screen(3, :); slopeAndRatioMissing.MuscleStrength = NaN;
     assert(RELAX_screen_reason(slopeAndRatioMissing, meta) == "Not screened: BlinkRatio missing", 'a missing slope is never listed');
     twoFlags = screen(2, :); twoFlags.BlinkRatio_flag = true; twoFlags.BlinkRatio_z = 5.04;
-    assert(RELAX_screen_reason(twoFlags, meta) == ...
-        "MuscleProportion is 4.2 robust SD above the dataset median (cutoff 3.0); BlinkRatio is 5.0 robust SD above the dataset median (cutoff 3.0)");
+    assert(RELAX_screen_reason(twoFlags, meta) == muscleSentence + "; BlinkRatio is 5.0 robust SD above the dataset median (cutoff 3.0); " + holeSentence);
     notCleaned = screen(1, :); notCleaned.ScreenOutcome = "notCleaned";
     assert(RELAX_screen_reason(notCleaned, meta) == "Not cleaned by the pipeline");
 
@@ -41,6 +48,14 @@ function test_RELAX_screen_draw_sheet()
     offScale = screen; offScale.MuscleProportion_z(2:3) = [40; 55];
     RELAX_screen_draw_sheet(sheet, offScale(2, :), offScale, meta, fullfile(reviewDir, 'offScale'));
     assert(isfile(fullfile(reviewDir, 'offScale', 'f2.png')));
+
+    missingDepth = twoMissing;
+    RELAX_screen_draw_sheet(noBlinks, missingDepth, screen, meta, fullfile(reviewDir, 'missingDepth'));
+    assert(isfile(fullfile(reviewDir, 'missingDepth', 'f3.png')));
+
+    deepHoles = screen; deepHoles.HoleDepth(1:2) = [9; 1.7];
+    RELAX_screen_draw_sheet(sheet, deepHoles(2, :), deepHoles, meta, fullfile(reviewDir, 'deepHoles'));
+    assert(isfile(fullfile(reviewDir, 'deepHoles', 'f2.png')));
 
     allZero = screen; allZero.MuscleStrength_z(:) = NaN;
     meta.zeroScaleMetrics = "MuscleStrength";
@@ -78,12 +93,14 @@ function [screen, meta, sheet] = syntheticSheet()
 
     T = table(["f1"; "f2"; "f3"], ["p1"; "p1"; "p2"], ["cleaned"; "cleaned"; "cleaned"], 'VariableNames', {'File', 'Participant', 'Outcome'});
     metrics = struct('MuscleProportion', {0.10; 0.30; 0.12}, 'MuscleStrength', {1; 2; 1.5}, ...
-                     'BlinkRatio', {0.2; 0.3; NaN}, 'NInterpolated', {2; 3; 1});
-    [screen, meta] = RELAX_screen_score_table(T, metrics, struct('cutoff', 3, 'sampleSize', 10, 'seed', 1));
+                     'BlinkRatio', {0.2; 0.3; NaN}, 'NInterpolated', {2; 3; 1}, 'HoleDepth', {1.0; 1.7; 1.0}, ...
+                     'HoleDeepestElectrode', {""; "E5"; ""}, 'HoleElectrodes', {""; "E5"; ""}, 'Spacing', {0.02; 0.02; 0.02}, ...
+                     'NInterpolatedLimit', {50; 50; 50}, 'NChannels', {203; 203; 203}, 'MaxProportionDeleted', {0.25; 0.25; 0.25});
+    [screen, meta] = RELAX_screen_score_table(T, metrics, struct('cutoff', 3, 'sampleSize', 10, 'seed', 1, 'holeDepthLimit', 1.4));
     screen.MuscleProportion_z(2) = 4.2;
     screen.MuscleProportion_flag = [false; true; false];
     screen.ScreenOutcome = ["pass"; "fail"; "unscreened"];
-    screen.FlaggedBy = ["", "MuscleProportion", ""]';
+    screen.FlaggedBy = ["", "MuscleProportion; HoleDepth", ""]';
 end
 
 function avg = withoutBaseline(avg)

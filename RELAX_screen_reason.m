@@ -6,14 +6,17 @@
 %
 % Inputs:
 %   row          - one row of the table from RELAX_screen_score_table
-%   meta         - its second output (.cutoff, .metricNames, .unscreeningMetrics)
+%   meta         - its second output (.cutoff, .holeDepthLimit, .metricNames, .zMetricNames,
+%                  .unscreeningMetrics)
 %   baselineNote - (optional) why the before-wICA trace is missing; appended after " | "
 %                  as "No before-wICA trace: <note>" when not empty
 %
 % Outputs:
-%   reason - string. Failing files list each flagging metric with its z; unscreened files
-%            list the missing metrics of meta.unscreeningMetrics (a missing
-%            MuscleStrength never leaves a file unscreened); passing files state the cutoff.
+%   reason - string. Failing files list each flagging metric in meta.metricNames order: a z-scored
+%            metric with its z, the hole with its depth and deepest electrode, the interpolated
+%            count with the pipeline's limit; unscreened files list the missing metrics of
+%            meta.unscreeningMetrics (a missing MuscleStrength never leaves a file unscreened);
+%            passing files state the cutoff and the hole-depth limit.
 
 function reason = RELAX_screen_reason(row, meta, baselineNote)
 
@@ -22,7 +25,7 @@ function reason = RELAX_screen_reason(row, meta, baselineNote)
         case "notCleaned", reason = "Not cleaned by the pipeline";
         case "fail",       reason = failReason(row, meta);
         case "unscreened", reason = unscreenedReason(row, meta);
-        otherwise,         reason = sprintf("All metrics within cutoff %.1f", meta.cutoff);
+        otherwise,         reason = sprintf("All metrics within cutoff %.1f, hole depth within limit %.1f", meta.cutoff, meta.holeDepthLimit);
     end
     if strlength(baselineNote) > 0, reason = reason + " | No before-wICA trace: " + baselineNote; end
 end
@@ -30,12 +33,23 @@ end
 function reason = failReason(row, meta)
     sentences = strings(1, 0);
     for name = meta.metricNames
-        if row.(name + "_flag")
-            sentences(end + 1) = sprintf("%s is %.1f robust SD above the dataset median (cutoff %.1f)", ...
-                                         name, row.(name + "_z"), meta.cutoff);
-        end
+        if row.(name + "_flag"), sentences(end + 1) = flagSentence(row, name, meta); end
     end
     reason = strjoin(sentences, "; ");
+end
+
+function sentence = flagSentence(row, name, meta)
+    switch name
+        case "HoleDepth"
+            sentence = sprintf("Interpolation hole %.1f× electrode spacing deep at %s (limit %.1f)", ...
+                               row.HoleDepth, row.HoleDeepestElectrode, meta.holeDepthLimit);
+        case "NInterpolated"
+            sentence = sprintf("%d channels interpolated, the pipeline's limit of %d (%.0f%% of %d): bad channels may remain", ...
+                               row.NInterpolated, row.NInterpolated_limit, 100 * row.MaxProportionDeleted, row.NChannels);
+        otherwise
+            sentence = sprintf("%s is %.1f robust SD above the dataset median (cutoff %.1f)", ...
+                               name, row.(name + "_z"), meta.cutoff);
+    end
 end
 
 function reason = unscreenedReason(row, meta)

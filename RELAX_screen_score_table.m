@@ -1,5 +1,5 @@
-% RELAX_screen_score_table() - One row per file: the four screening metrics, their robust
-%                              z-scores, the screen verdict and the review-sample draw.
+% RELAX_screen_score_table() - One row per file: the screening metrics, the screen verdict and the
+%                              review-sample draw.
 %
 % Usage:
 %   >> [screen, meta] = RELAX_screen_score_table(T, metrics, opts);
@@ -7,16 +7,27 @@
 % Inputs:
 %   T       - table from RELAX_QC_load_tables (File, Participant, Outcome)
 %   metrics - [n x 1] struct array in the row order of T with the fields MuscleProportion,
-%             MuscleStrength, BlinkRatio, NInterpolated; NaN for files that are not cleaned
-%   opts    - .cutoff (a metric flags when z > cutoff), .sampleSize (passing files drawn for
-%             review), .seed
+%             MuscleStrength, BlinkRatio, NInterpolated, HoleDepth, HoleDeepestElectrode (string),
+%             HoleElectrodes (string), Spacing, NInterpolatedLimit, NChannels and
+%             MaxProportionDeleted (RELAX_screen_file_metrics); NaN (strings "") for files that are
+%             not cleaned
+%   opts    - .cutoff (a z-scored metric flags when z > cutoff), .holeDepthLimit (HoleDepth flags
+%             when above it), .sampleSize (passing files drawn for review), .seed
 %
 % Outputs:
-%   screen - one row per row of T: File, Participant, PipelineOutcome; for each metric <M>,
-%            <M>_median, <M>_scale, <M>_z, <M>_flag; ScreenOutcome, FlaggedBy, InReviewSample,
-%            SheetStatus ("" until the sheets stage) and SheetMessage
-%   meta   - .cutoff, .sampleSize, .seed, .nCleaned, .created, .metricNames and
-%            .zeroScaleMetrics (metrics whose scale is not positive, so they cannot flag) and
+%   screen - one row per row of T, with the columns
+%              File, Participant, PipelineOutcome;
+%              for MuscleProportion, MuscleStrength and BlinkRatio: <M>, <M>_median, <M>_scale,
+%                <M>_z, <M>_flag;
+%              HoleDepth, HoleDepth_limit, HoleDepth_flag, HoleDeepestElectrode, HoleElectrodes;
+%              NInterpolated, NInterpolated_limit (flags when the count reaches it),
+%                NInterpolated_flag, NChannels, MaxProportionDeleted;
+%              ScreenOutcome, FlaggedBy, InReviewSample, SheetStatus ("" until the sheets stage)
+%                and SheetMessage
+%   meta   - .cutoff, .holeDepthLimit, .sampleSize, .seed, .nCleaned, .created, .medianSpacing (of
+%            the cleaned files, in the units of the electrode coordinates), .metricNames (the
+%            decision and display order), .zMetricNames (the metrics with a robust z),
+%            .zeroScaleMetrics (z metrics whose scale is not positive, so they cannot flag) and
 %            .unscreeningMetrics (metrics whose NaN leaves a file unscreened)
 %
 % The median and scale come from the cleaned files only. The review sample uses its own
@@ -24,37 +35,59 @@
 
 function [screen, meta] = RELAX_screen_score_table(T, metrics, opts)
 
-    metricNames = ["MuscleProportion", "MuscleStrength", "BlinkRatio", "NInterpolated"];
-    missingMakesUnscreened = [true false true true];
+    zMetricNames = ["MuscleProportion", "MuscleStrength", "BlinkRatio"];
+    metricNames = [zMetricNames, "HoleDepth", "NInterpolated"];
+    missingMakesUnscreened = [true false true true false];
     nFiles = height(T);
     isCleaned = T.Outcome == "cleaned";
 
     screen = table(T.File, T.Participant, T.Outcome, 'VariableNames', {'File', 'Participant', 'PipelineOutcome'});
     values = NaN(nFiles, numel(metricNames));
-    zScores = NaN(nFiles, numel(metricNames));
-    zeroScale = false(1, numel(metricNames));
-    for m = 1:numel(metricNames)
-        name = metricNames(m);
+    flagged = false(nFiles, numel(metricNames));
+    zeroScale = false(1, numel(zMetricNames));
+    for m = 1:numel(zMetricNames)
+        name = zMetricNames(m);
         values(:, m) = [metrics.(name)]';
-        [zScores(:, m), centre, scale] = RELAX_screen_robust_z(valuesOfCleanedOnly(values(:, m), isCleaned));
+        [z, centre, scale] = RELAX_screen_robust_z(valuesOfCleanedOnly(values(:, m), isCleaned));
         zeroScale(m) = ~(scale > 0);
+        flagged(:, m) = z > opts.cutoff & isCleaned;
         screen.(name) = values(:, m);
         screen.(name + "_median") = repmat(centre, nFiles, 1);
         screen.(name + "_scale") = repmat(scale, nFiles, 1);
-        screen.(name + "_z") = zScores(:, m);
-        screen.(name + "_flag") = zScores(:, m) > opts.cutoff & isCleaned;
+        screen.(name + "_z") = z;
+        screen.(name + "_flag") = flagged(:, m);
     end
 
-    [screen.ScreenOutcome, screen.FlaggedBy] = RELAX_screen_outcome(T.Outcome, values, zScores, opts.cutoff, ...
+    depthColumn = numel(zMetricNames) + 1;
+    values(:, depthColumn) = [metrics.HoleDepth]';
+    flagged(:, depthColumn) = values(:, depthColumn) > opts.holeDepthLimit & isCleaned;
+    screen.HoleDepth = values(:, depthColumn);
+    screen.HoleDepth_limit = repmat(opts.holeDepthLimit, nFiles, 1);
+    screen.HoleDepth_flag = flagged(:, depthColumn);
+    screen.HoleDeepestElectrode = [metrics.HoleDeepestElectrode]';
+    screen.HoleElectrodes = [metrics.HoleElectrodes]';
+
+    countColumn = numel(zMetricNames) + 2;
+    values(:, countColumn) = [metrics.NInterpolated]';
+    limits = [metrics.NInterpolatedLimit]';
+    flagged(:, countColumn) = values(:, countColumn) >= limits & isCleaned;
+    screen.NInterpolated = values(:, countColumn);
+    screen.NInterpolated_limit = limits;
+    screen.NInterpolated_flag = flagged(:, countColumn);
+    screen.NChannels = [metrics.NChannels]';
+    screen.MaxProportionDeleted = [metrics.MaxProportionDeleted]';
+
+    [screen.ScreenOutcome, screen.FlaggedBy] = RELAX_screen_outcome(T.Outcome, values, flagged, ...
                                                                     metricNames, missingMakesUnscreened);
     screen.InReviewSample = drawReviewSample(screen.ScreenOutcome == "pass", opts.sampleSize, opts.seed);
     screen.SheetStatus = strings(nFiles, 1);
     screen.SheetMessage = strings(nFiles, 1);
 
-    meta = struct('cutoff', opts.cutoff, 'sampleSize', opts.sampleSize, 'seed', opts.seed, ...
-                  'nCleaned', sum(isCleaned), 'created', datetime('now'), ...
-                  'metricNames', metricNames, 'zeroScaleMetrics', metricNames(zeroScale), ...
-                  'unscreeningMetrics', metricNames(missingMakesUnscreened));
+    meta = struct('cutoff', opts.cutoff, 'holeDepthLimit', opts.holeDepthLimit, 'sampleSize', opts.sampleSize, ...
+                  'seed', opts.seed, 'nCleaned', sum(isCleaned), 'created', datetime('now'), ...
+                  'medianSpacing', median([metrics(isCleaned).Spacing], 'omitnan'), ...
+                  'metricNames', metricNames, 'zMetricNames', zMetricNames, ...
+                  'zeroScaleMetrics', zMetricNames(zeroScale), 'unscreeningMetrics', metricNames(missingMakesUnscreened));
 end
 
 function x = valuesOfCleanedOnly(x, isCleaned)
