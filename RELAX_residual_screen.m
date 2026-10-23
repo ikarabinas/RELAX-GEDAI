@@ -7,13 +7,14 @@
 %   >> RELAX_residual_screen('sheets', {'m144_dlpfc_day1_stitched'})   % only these files
 %
 % Output goes to <myPath>/<outputFolderName>/Residual_screen/.
-% Edit myPath, outputFolderName, cutoff, sampleSize, seed and the sheet settings below for a different dataset.
+% Edit myPath, outputFolderName, cutoff, holeDepthLimit, sampleSize, seed and the sheet settings below for a different dataset.
 
 function RELAX_residual_screen(stage, onlyFiles)
 
     myPath = '/home/nga4004/TMS_response_variability/store/mdd_dlpfc/preprocessed_Oct26/rest_treat_joined/';
     outputFolderName = 'RELAXProcessed_broadbandGEDAI'; % the RELAX_cfg.OutputFolderName of the run being screened
     cutoff = 3;
+    holeDepthLimit = 1.4; % in electrode spacings
     sampleSize = 10;
     seed = 20261022;
     windowSeconds = 3;
@@ -28,7 +29,7 @@ function RELAX_residual_screen(stage, onlyFiles)
 
     outDir = fullfile(myPath, outputFolderName, 'Residual_screen');
     opts = struct('myPath', myPath, 'outputFolderName', outputFolderName, 'outDir', outDir, ...
-                  'cutoff', cutoff, 'sampleSize', sampleSize, 'seed', seed, ...
+                  'cutoff', cutoff, 'holeDepthLimit', holeDepthLimit, 'sampleSize', sampleSize, 'seed', seed, ...
                   'windowSeconds', windowSeconds, 'nWindows', nWindows, 'muscleSmoothSeconds', muscleSmoothSeconds, ...
                   'blinkHalfSeconds', blinkHalfSeconds, 'topoHalfSeconds', topoHalfSeconds);
 

@@ -5,9 +5,9 @@
 %   >> [screen, meta] = RELAX_screen_run_score(opts);
 %
 % opts: built by RELAX_residual_screen (.myPath, .outputFolderName, .outDir, .cutoff,
-% .sampleSize, .seed). A cleaned file whose header cannot be read, or lacks EEG.allchan or
-% EEG.RELAX.ListOfChannelsAfterRejections, keeps its muscle metrics,
-% gets NaN BlinkRatio and NInterpolated (so it is unscreened), and the error message goes in
+% .sampleSize, .seed, .holeDepthLimit). A cleaned file whose header cannot be read, or lacks
+% EEG.allchan or EEG.RELAX.ListOfChannelsAfterRejections, keeps its muscle metrics,
+% gets NaN BlinkRatio, NInterpolated and HoleDepth (so it is unscreened), and the error message goes in
 % SheetMessage. A cleaned file whose BlinkRatio is NaN for another reason has that reason in
 % SheetMessage. See RELAX_screen_score_table for the columns of screen and meta.
 
@@ -22,7 +22,7 @@ function [screen, meta] = RELAX_screen_run_score(opts)
     headerMessages = strings(nFiles, 1);
     for f = find(T.Outcome == "cleaned")'
         cleanedPath = fullfile(cleanedDir, T.File(f) + RELAX_QC_cleaned_suffix(cleanedDir, T.File(f)));
-        [metrics(f), headerMessages(f)] = measureOneFile(cleanedPath, T(f, :), cfgs(char(T.Participant(f))));
+        [metrics(f), headerMessages(f)] = measureOneFile(cleanedPath, T(f, :), cfgs(char(T.Participant(f))), opts);
         fprintf('RELAX_screen_run_score %d/%d %s %s\n', f, nFiles, T.File(f), headerMessages(f));
     end
 
@@ -37,14 +37,16 @@ function [screen, meta] = RELAX_screen_run_score(opts)
 end
 
 function m = nanMetrics()
-    m = struct('MuscleProportion', NaN, 'MuscleStrength', NaN, 'BlinkRatio', NaN, 'NInterpolated', NaN);
+    m = struct('MuscleProportion', NaN, 'MuscleStrength', NaN, 'BlinkRatio', NaN, 'NInterpolated', NaN, ...
+               'HoleDepth', NaN, 'HoleDeepestElectrode', "", 'HoleElectrodes', "", 'Spacing', NaN, ...
+               'NInterpolatedLimit', NaN, 'NChannels', NaN, 'MaxProportionDeleted', NaN);
 end
 
-function [m, message] = measureOneFile(cleanedPath, row, cfg)
+function [m, message] = measureOneFile(cleanedPath, row, cfg, opts)
     [header, message] = loadHeader(cleanedPath);
     if message == ""
-        [m, message] = RELAX_screen_file_metrics(row, cfg, {header.allchan.labels}, ...
-                                                 string(header.RELAX.ListOfChannelsAfterRejections));
+        [m, message] = RELAX_screen_file_metrics(row, cfg, header.allchan, ...
+                                                 string(header.RELAX.ListOfChannelsAfterRejections), opts.holeDepthLimit);
     else
         m = nanMetrics();
         m.MuscleProportion = row.TableCleanedMuscleProportion;

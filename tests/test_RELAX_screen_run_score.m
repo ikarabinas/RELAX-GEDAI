@@ -3,7 +3,7 @@ function test_RELAX_screen_run_score()
     outDir = tempname; cleanup = onCleanup(@() rmdir(outDir, 's'));
     fixtures = fullfile(fileparts(mfilename('fullpath')), 'fixtures');
     opts = struct('myPath', [fixtures filesep], 'outputFolderName', 'RELAXProcessed', 'outDir', outDir, ...
-                  'cutoff', 3, 'sampleSize', 10, 'seed', 20261022);
+                  'cutoff', 3, 'sampleSize', 10, 'seed', 20261022, 'holeDepthLimit', 1.4);
     [screen, meta] = RELAX_screen_run_score(opts);
     assert(any(screen.File == "boundary_fixture"));
     assert(screen.NInterpolated(screen.File == "boundary_fixture") == 5, 'interpolated = allchan minus kept channels');
@@ -37,7 +37,7 @@ function assertUnscreenedWithHeader(fixtures, healthyScreen, writeCleanedFile, e
     writeCleanedFile(cleanedDir, 'boundary_fixture_RELAX.set');
     warningState = warning('off', 'RELAX_screen:headerUnreadable'); restoreWarning = onCleanup(@() warning(warningState));
     opts = struct('myPath', [root filesep], 'outputFolderName', 'RELAXProcessed', 'outDir', fullfile(root, 'out'), ...
-                  'cutoff', 3, 'sampleSize', 10, 'seed', 1);
+                  'cutoff', 3, 'sampleSize', 10, 'seed', 1, 'holeDepthLimit', 1.4);
     screen = RELAX_screen_run_score(opts);
     assert(screen.ScreenOutcome == "unscreened" && strlength(screen.SheetMessage) > 0);
     assert(contains(screen.SheetMessage, expectedMessagePart));
