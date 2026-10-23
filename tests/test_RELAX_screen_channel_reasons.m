@@ -27,7 +27,7 @@ function test_RELAX_screen_channel_reasons()
 
     flatFirst = header();
     flatFirst.RELAX.PopScreen.badChannels = {'E2'; 'E3'};
-    flatFirst.RELAX.PopScreen.badChannelReason = {'flat'; 'rate'};
+    flatFirst.RELAX.PopScreen.badChannelReason = {'flat: constant within every segment'; '12.3 steps/min exceeds 5'};
     r = RELAX_screen_channel_reasons(flatFirst);
     assert(isequal([r.groups.reason], ["impedance" "pop (flat)" "pop (rate)" "muscle" "unknown"]), 'pop sub-reasons follow the first label in allchan');
 
@@ -40,6 +40,27 @@ function test_RELAX_screen_channel_reasons()
     twoScreens.RELAXProcessingExtremeRejections.ExtremeDataBasedChannelToReject = {'E5'};
     r = RELAX_screen_channel_reasons(twoScreens);
     assert(r.reasons(3) == "impedance" && r.counts.extreme == 0, 'a channel in two lists takes the earlier reason');
+    twoRates = header();
+    twoRates.RELAX.PopScreen.badChannels = {'E2'; 'E3'};
+    twoRates.RELAX.PopScreen.badChannelReason = {'12.3 steps/min exceeds 5'; '7.9 steps/min exceeds 5'};
+    r = RELAX_screen_channel_reasons(twoRates);
+    assert(isequal([r.groups.reason], ["impedance" "pop (rate)" "muscle" "unknown"]) && isequal(r.groups(2).labels, ["E2" "E3"]), 'rates with different numbers share one group');
+
+    transitionAndUncategorised = header();
+    transitionAndUncategorised.RELAX.PopScreen.badChannelReason = {'0.031 of samples in transition exceeds 0.02'; 'something else'};
+    r = RELAX_screen_channel_reasons(transitionAndUncategorised);
+    assert(isequal(r.reasons(1:2), ["pop" "pop (transition)"]), 'badChannels is E3 then E2');
+
+    emptyEntry = header();
+    emptyEntry.RELAX.PopScreen.badChannels = {''; 'E2'; 'E3'};
+    emptyEntry.RELAX.PopScreen.badChannelReason = {''; '12.3 steps/min exceeds 5'; 'flat: constant within every segment'};
+    r = RELAX_screen_channel_reasons(emptyEntry);
+    assert(isequal(r.reasons(1:2), ["pop (rate)" "pop (flat)"]), 'an empty entry does not shift later pairings');
+
+    numericPlaceholder = header();
+    numericPlaceholder.RELAXProcessingExtremeRejections.MuscleBasedElectrodesToReject = 0;
+    r = RELAX_screen_channel_reasons(numericPlaceholder);
+    assert(isequal(r.reasons, ["pop (rate)" "pop (flat)" "impedance" "unknown" "unknown"]), 'a numeric placeholder is no label');
     fprintf('test_RELAX_screen_channel_reasons: PASS\n');
 end
 
@@ -48,7 +69,7 @@ function EEG = header()
     EEG.allchan = struct('labels', labels);
     EEG.RELAX.ListOfChannelsAfterRejections = {'E1'; 'E4'; 'E8'};
     EEG.RELAX.PopScreen.badChannels = {'E3'; 'E2'};
-    EEG.RELAX.PopScreen.badChannelReason = {'flat'; 'rate'};
+    EEG.RELAX.PopScreen.badChannelReason = {'flat: constant within every segment'; '12.3 steps/min exceeds 5'};
     EEG.RELAXProcessingExtremeRejections.ImpedanceBasedChannelToReject = {{'E5'}};
     EEG.RELAXProcessingExtremeRejections.PopBasedChannelToReject = {{'E2'; 'E3'}};
     EEG.RELAXProcessingExtremeRejections.BridgedChannelToReject = {{}};
