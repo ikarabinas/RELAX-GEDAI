@@ -4,7 +4,7 @@ function test_RELAX_screen_run_sheets()
     fixtures = fullfile(fileparts(mfilename('fullpath')), 'fixtures');
     opts = struct('myPath', [fixtures filesep], 'outputFolderName', 'RELAXProcessed', 'outDir', outDir, ...
                   'cutoff', 3, 'sampleSize', 10, 'seed', 20261022, 'holeDepthLimit', 1.4, 'windowSeconds', 3, 'nWindows', 3, ...
-                  'muscleSmoothSeconds', 2, 'blinkHalfSeconds', 0.5, 'topoHalfSeconds', 0.05);
+                  'blinkHalfSeconds', 0.5, 'topoHalfSeconds', 0.05);
     RELAX_screen_run_score(opts);
 
     loaded = load(fullfile(outDir, 'residual_screen.mat'));

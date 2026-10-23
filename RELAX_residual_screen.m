@@ -19,7 +19,6 @@ function RELAX_residual_screen(stage, onlyFiles)
     seed = 20261022;
     windowSeconds = 3;
     nWindows = 3;
-    muscleSmoothSeconds = 2;
     blinkHalfSeconds = 0.5;
     topoHalfSeconds = 0.05;
 
@@ -30,7 +29,7 @@ function RELAX_residual_screen(stage, onlyFiles)
     outDir = fullfile(myPath, outputFolderName, 'Residual_screen');
     opts = struct('myPath', myPath, 'outputFolderName', outputFolderName, 'outDir', outDir, ...
                   'cutoff', cutoff, 'holeDepthLimit', holeDepthLimit, 'sampleSize', sampleSize, 'seed', seed, ...
-                  'windowSeconds', windowSeconds, 'nWindows', nWindows, 'muscleSmoothSeconds', muscleSmoothSeconds, ...
+                  'windowSeconds', windowSeconds, 'nWindows', nWindows, ...
                   'blinkHalfSeconds', blinkHalfSeconds, 'topoHalfSeconds', topoHalfSeconds);
 
     if any(strcmp(stage, {'score', 'all'}))

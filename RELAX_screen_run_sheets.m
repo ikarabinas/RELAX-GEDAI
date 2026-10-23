@@ -5,7 +5,7 @@
 %   >> screen = RELAX_screen_run_sheets(opts, onlyFiles);
 %
 % opts: built by RELAX_residual_screen (the score-stage fields plus .windowSeconds, .nWindows,
-% .muscleSmoothSeconds, .blinkHalfSeconds and .topoHalfSeconds).
+% .blinkHalfSeconds and .topoHalfSeconds).
 % onlyFiles: cell or string array of base names; empty means the files that fail, are
 % unscreened or are in the review sample. An unknown name raises RELAX_screen:unknownFile.
 %

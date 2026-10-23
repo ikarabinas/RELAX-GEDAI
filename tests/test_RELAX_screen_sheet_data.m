@@ -5,11 +5,14 @@ function test_RELAX_screen_sheet_data()
     inputs = dir(fullfile(fixtures, '**', '*.set')); inputs = inputs(~contains({inputs.folder}, 'RELAXProcessed'));
     paths = RELAX_QC_file_paths(processed, inputs, "boundary_fixture");
     loaded = load(fullfile(processed, 'PerParticipantStats', 'RELAX_cfg_smoke.mat'), 'RELAX_cfg');
-    opts = struct('windowSeconds', 3, 'nWindows', 3, 'muscleSmoothSeconds', 2, 'blinkHalfSeconds', 0.5, ...
+    opts = struct('windowSeconds', 3, 'nWindows', 3, 'blinkHalfSeconds', 0.5, ...
                   'topoHalfSeconds', 0.05, 'blinkElectrodeFallback', NaN);
     sheet = RELAX_screen_sheet_data(paths, loaded.RELAX_cfg, opts);
     assert(numel(sheet.muscle) == 3 && numel(sheet.blink) == 3 && iscell(sheet.interpolatedLabels));
-    assert(numel(sheet.muscleRelativePower) == 3 && numel(sheet.blinkResidual) == 3);
+    assert(numel(sheet.muscleSlope) == 3 && numel(sheet.muscleSlopeChannel) == 3 && numel(sheet.blinkResidual) == 3);
+    assert(sheet.muscleSlopeThreshold == loaded.RELAX_cfg.MuscleSlopeThreshold);
+    assert(isstruct(sheet.interpolatedReasons) && isequal(sheet.interpolatedReasons.labels, string(sheet.interpolatedLabels)), ...
+           'the reasons are for the interpolated electrodes');
     shown = [sheet.muscle([sheet.muscle.available])];
     for w = shown, assert(abs(w.t(end) - w.t(1) - 3) < 2 / 500); end
     starts = arrayfun(@(w) w.t(1), shown);
@@ -19,7 +22,12 @@ function test_RELAX_screen_sheet_data()
         assert(~w.available || strlength(sheet.baselineNote) > 0 || ~isempty(w.before));
     end
     unavailable = ~[sheet.muscle.available];
-    assert(all(isnan(sheet.muscleRelativePower(unavailable))));
+    assert(all(isnan(sheet.muscleSlope(unavailable))) && all(sheet.muscleSlopeChannel(unavailable) == ""));
+    assert(all(isfinite(sheet.muscleSlope(~unavailable))) && all(strlength(sheet.muscleSlopeChannel(~unavailable)) > 0));
+    for k = find(~unavailable)
+        assert(ismember(sheet.muscleSlopeChannel(k), string(sheet.muscle(k).channels)), 'a muscle window shows the channel with the epoch''s highest slope');
+        assert(numel(sheet.muscle(k).channels) <= 6);
+    end
     assert(all(isnan(sheet.blinkResidual(~[sheet.blink.available]))));
     opts.nWindows = 30;
     crowded = RELAX_screen_sheet_data(paths, loaded.RELAX_cfg, opts);
@@ -27,8 +35,12 @@ function test_RELAX_screen_sheet_data()
     assert(~isempty(missingBlinks) && all(startsWith([missingBlinks.note], "Only")), 'too few blinks: notes say how many');
     assert(all(contains([missingBlinks.note], 's apart')) || crowded.blinkN == nnz([crowded.blink.available]));
     missingMuscle = crowded.muscle(~[crowded.muscle.available]);
-    assert(~isempty(missingMuscle) && all(contains([missingMuscle.note], 'muscle burst')) && all(contains([missingMuscle.note], 'at least 3 s apart')));
+    assert(~isempty(missingMuscle) && all(contains([missingMuscle.note], 'muscle epoch')) && all(contains([missingMuscle.note], 'at least 3 s apart')));
     opts.nWindows = 3;
+    lowPassedCfg = loaded.RELAX_cfg; lowPassedCfg.LowPassFilter = 60;
+    withoutSlopes = RELAX_screen_sheet_data(paths, lowPassedCfg, opts);
+    assert(~any([withoutSlopes.muscle.available]) && all(contains([withoutSlopes.muscle.note], "60 Hz")), 'without slopes every muscle window says why');
+    assert(all(isnan(withoutSlopes.muscleSlope)) && all(withoutSlopes.muscleSlopeChannel == "") && any([withoutSlopes.blink.available]), 'blink windows are unaffected');
     refusedCfg = loaded.RELAX_cfg; refusedCfg.Run_GEDAI = 1; refusedCfg.GEDAI_BroadbandOnly = false;
     assertConfigRefused(refusedCfg);
     sheetWithoutBaseline = RELAX_screen_sheet_data(paths, refusedCfg, opts);
@@ -44,28 +56,22 @@ function test_RELAX_screen_sheet_data()
 end
 
 function test_muscle_windows_stay_off_segment_edges(loadedCfg)
-% A short transient at a segment's end must not outrank a longer burst further in, and the
-% window shown for the burst slides to stay inside its segment.
+% The window shown for a burst near the start of a segment slides to stay inside that segment, and
+% bursts 3 s apart that overlap once slid inside their segment are not both chosen.
     rng(7);
     srate = 500; seconds = 20; nChan = 32;
     chanlocs = make_qc_chanlocs(nChan);
     eeg = syntheticEeg(srate, seconds, chanlocs);
-    secondsToSamples = @(t0, t1) round(t0 * srate) + 1 : round(t1 * srate);
-    carrier = @(span, hz) sin(2 * pi * hz * (span - 1) / srate);
-    burstSpan = secondsToSamples(10, 13.5);
-    envelope = exp(-(((burstSpan - 1) / srate - 11.2) / 0.6).^2);
-    eeg.data(:, burstSpan) = eeg.data(:, burstSpan) + 20 * envelope .* carrier(burstSpan, 50);
-    transientSpan = secondsToSamples(9.8, 10);
-    eeg.data(:, transientSpan) = eeg.data(:, transientSpan) + 35 * carrier(transientSpan, 50);
+    eeg = addBurst(eeg, 11.2, 20);
     folder = tempname; mkdir(folder); cleanup = onCleanup(@() rmdir(folder, 's'));
     pop_saveset(eeg, 'filename', 'synthetic_RELAX.set', 'filepath', folder);
     paths = struct('cleaned', fullfile(folder, 'synthetic_RELAX.set'), 'extremes', fullfile(folder, 'absent.set'));
-    opts = struct('windowSeconds', 3, 'nWindows', 3, 'muscleSmoothSeconds', 2, 'blinkHalfSeconds', 0.5, ...
+    opts = struct('windowSeconds', 3, 'nWindows', 3, 'blinkHalfSeconds', 0.5, ...
                   'topoHalfSeconds', 0.05, 'blinkElectrodeFallback', NaN);
 
     sheet = RELAX_screen_sheet_data(paths, loadedCfg, opts);
     strongest = sheet.muscle(1);
-    assert(strongest.available && abs(mean(strongest.t) - 11.2) < 0.5, 'the strongest window is the mid-segment burst, not the transient at 9.8-10 s');
+    assert(strongest.available && abs(mean(strongest.t) - 11.2) < 0.5, 'the strongest window is the burst');
     assert(strongest.t(1) >= 10 - 1 / srate && isempty(strongest.boundaries), 'the burst window starts inside its segment and crosses no boundary');
 
     crowded = syntheticEeg(srate, seconds, chanlocs);
@@ -89,13 +95,14 @@ function test_muscle_windows_stay_off_segment_edges(loadedCfg)
 end
 
 function eeg = syntheticEeg(srate, seconds, chanlocs)
-% Two segments of seconds / 2 each, white noise, every channel kept.
+% Two segments of seconds / 2 each, 1/f noise, every channel kept.
     eeg = eeg_emptyset(); eeg.srate = srate; eeg.nbchan = numel(chanlocs); eeg.pnts = seconds * srate;
     eeg.trials = 1; eeg.xmin = 0; eeg.chanlocs = chanlocs;
-    eeg.data = randn(eeg.nbchan, eeg.pnts);
+    eeg.data = make_pink_noise(eeg.nbchan, eeg.pnts);
     eeg.event = struct('type', 'boundary', 'latency', eeg.pnts / 2 + 0.5, 'duration', 0);
     eeg = eeg_checkset(eeg);
     eeg.allchan = chanlocs;
+    eeg.RELAX.Data_has_been_cleaned = 1;
     eeg.RELAX.ListOfChannelsAfterRejections = {chanlocs.labels};
 end
 
@@ -103,7 +110,7 @@ function eeg = addBurst(eeg, centreSeconds, amplitude)
     span = max(1, round((centreSeconds - 1.5) * eeg.srate) + 1) : round((centreSeconds + 1.5) * eeg.srate);
     seconds = (span - 1) / eeg.srate;
     envelope = exp(-((seconds - centreSeconds) / 0.6).^2);
-    eeg.data(:, span) = eeg.data(:, span) + amplitude * envelope .* sin(2 * pi * 50 * seconds);
+    eeg.data(:, span) = eeg.data(:, span) + amplitude * envelope .* randn(size(eeg.data(:, span)));
 end
 
 function separations = pdist2Seconds(centres)

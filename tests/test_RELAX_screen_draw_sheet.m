@@ -93,7 +93,7 @@ function [screen, meta, sheet] = syntheticSheet()
     sheet.baselineNote = "";
     sheet.muscle = [window("muscle", 10), window("muscle", 25), window("muscle", 40)];
     sheet.blink = [window("blink", 12), window("blink", 30), window("blink", 50)];
-    sheet.muscleRelativePower = [4.2 3.1 2.5];
+    sheet.muscleSlope = [-0.1 -0.2 -0.4];
     sheet.blinkResidual = [31 22 18];
     peaks = [1500 3000 4500];
     sheet.blinkN = numel(peaks);
@@ -103,7 +103,10 @@ function [screen, meta, sheet] = syntheticSheet()
     metrics = struct('MuscleProportion', {0.10; 0.30; 0.12}, 'MuscleStrength', {1; 2; 1.5}, ...
                      'BlinkRatio', {0.2; 0.3; NaN}, 'NInterpolated', {2; 3; 1}, 'HoleDepth', {1.0; 1.7; 1.0}, ...
                      'HoleDeepestElectrode', {""; "E5"; ""}, 'HoleElectrodes', {""; "E5"; ""}, 'Spacing', {0.02; 0.02; 0.02}, ...
-                     'NInterpolatedLimit', {50; 50; 50}, 'NChannels', {203; 203; 203}, 'MaxProportionDeleted', {0.25; 0.25; 0.25});
+                     'NInterpolatedLimit', {50; 50; 50}, 'NChannels', {203; 203; 203}, 'MaxProportionDeleted', {0.25; 0.25; 0.25}, ...
+                     'InterpolatedReasons', {""; "unknown: E5"; ""}, 'NInterpolated_impedance', {0; 0; 0}, 'NInterpolated_pop', {0; 0; 0}, ...
+                     'NInterpolated_bridged', {0; 0; 0}, 'NInterpolated_PREP', {0; 0; 0}, 'NInterpolated_extreme', {0; 0; 0}, ...
+                     'NInterpolated_muscle', {0; 0; 0}, 'NInterpolated_unknown', {0; 1; 0});
     [screen, meta] = RELAX_screen_score_table(T, metrics, struct('cutoff', 3, 'sampleSize', 10, 'seed', 1, 'holeDepthLimit', 1.4));
     screen.MuscleProportion_z(2) = 4.2;
     screen.MuscleProportion_flag = [false; true; false];
