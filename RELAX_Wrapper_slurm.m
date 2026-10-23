@@ -54,7 +54,8 @@ end
 fprintf('Started parpool with %d workers\n', n_workers);
 
 % Set output path
-RELAX_cfg.OutputPath=[RELAX_cfg.myPath filesep 'RELAXProcessed' filesep];   % use fileseparators for increased compatability 
+if ~isfield(RELAX_cfg,'OutputFolderName'); RELAX_cfg.OutputFolderName='RELAXProcessed'; end
+RELAX_cfg.OutputPath=[RELAX_cfg.myPath filesep RELAX_cfg.OutputFolderName filesep];   % use fileseparators for increased compatability 
 if ~exist(RELAX_cfg.OutputPath, 'dir'); mkdir(RELAX_cfg.OutputPath); end % make dir if not present
 fprintf('Output path set to: %s\n', RELAX_cfg.OutputPath);
 
@@ -212,11 +213,11 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     % Fail fast if this file contains discontinuities and a boundary-blind stage is on:
     RELAX_check_boundary_support(EEG, RELAX_cfg);
 
-    if ~exist([RELAX_cfg.foldername filesep 'RELAXProcessed'], 'dir')
-        mkdir([RELAX_cfg.foldername filesep 'RELAXProcessed']); % make dir if not present
+    if ~exist([RELAX_cfg.foldername filesep RELAX_cfg.OutputFolderName], 'dir')
+        mkdir([RELAX_cfg.foldername filesep RELAX_cfg.OutputFolderName]); % make dir if not present
     end
-    if ~exist([RELAX_cfg.foldername filesep 'RELAXProcessed' filesep 'RELAX_cfg'], 'dir')
-        mkdir([RELAX_cfg.foldername filesep 'RELAXProcessed' filesep 'RELAX_cfg']); % per-file cfg copies, so parallel array tasks don't clobber a shared file
+    if ~exist([RELAX_cfg.foldername filesep RELAX_cfg.OutputFolderName filesep 'RELAX_cfg'], 'dir')
+        mkdir([RELAX_cfg.foldername filesep RELAX_cfg.OutputFolderName filesep 'RELAX_cfg']); % per-file cfg copies, so parallel array tasks don't clobber a shared file
     end
     % Save this file's config under its own name, so parallel array tasks do not clobber
     % a shared file. fileparts strips both the directory (RELAX_cfg.filename carries a
@@ -224,7 +225,7 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     % extension would write a MAT-format file that the BIDS-mode '**/*.set' glob would
     % later pick up as if it were a recording.
     [~, cfg_basename, ~] = fileparts(RELAX_cfg.filename);
-    savefileone=[RELAX_cfg.foldername filesep 'RELAXProcessed' filesep 'RELAX_cfg' filesep cfg_basename '.mat'];
+    savefileone=[RELAX_cfg.foldername filesep RELAX_cfg.OutputFolderName filesep 'RELAX_cfg' filesep cfg_basename '.mat'];
     save(savefileone,'RELAX_cfg')
 
     %% Select channels 
@@ -336,19 +337,19 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     EEG.RELAXProcessingExtremeRejections.PopBasedChannelToReject={};
     if RELAX_cfg.Perform_pop_artifact_repair == 1
         PopDefaults = struct( ...
-            'PopDetect_WindowMs',                            151, ...
-            'PopDetect_TransitionMs',                        4, ...
-            'PopDetect_ZThreshold',                          20, ...
-            'PopDetect_ChannelZThreshold',                   35, ...
+            'PopDetect_WindowMs',                            101, ...
+            'PopDetect_TransitionMs',                        6, ...
+            'PopDetect_ZThreshold',                          10, ...
+            'PopDetect_ChannelZThreshold',                   20, ...
             'PopDetect_MinAmplitudeMicrovolts',              15, ...
             'PopDetect_RefractoryMs',                        10, ...
             'PopDetect_RefineTransition',                    true, ...
             'PopDetect_StepsPerMinuteToRejectChannel',       6, ...
             'PopDetect_MaxTransitionFractionToRejectChannel', 0.02, ...
             'PopDetect_CommonModeChannelFraction',           0.15, ...
-            'PopDetect_SlopeBaselineMs',                     1000, ...
-            'PopDetect_SlopeNoiseFloorMicrovolts',           0.1, ...
-            'PopDetect_SlopeSpreadQuantile',                 0.85, ...
+            'PopDetect_SlopeBaselineMs',                     500, ...
+            'PopDetect_SlopeNoiseFloorMicrovolts',           1, ...
+            'PopDetect_SlopeSpreadQuantile',                 0.95, ...
             'PopRepair_MaxPolyOrder',                        3, ...
             'PopRepair_MaxCutoffHz',                         1.0, ...
             'PopRepair_MaxWindowSeconds',                    2.0, ...
@@ -391,6 +392,11 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
             RefPopDefaults = struct( ...
                 'RefPop_MinChannels',            8, ...
                 'RefPop_MinAmplitudeMicrovolts', 10, ...
+                'RefPop_SlopeNoiseFloorMicrovolts', 0.5, ...
+                'RefPop_TransitionMs',           2, ...
+                'RefPop_SlopeBaselineMs',        1000, ...
+                'RefPop_ZThreshold',             10, ...
+                'RefPop_ChannelZThreshold',      20, ...
                 'RefPop_MinSignAgreement',       0.9, ...
                 'RefPop_MaxAmplitudeSpread',     0.5);
             for RefPopField = fieldnames(RefPopDefaults)'
@@ -401,14 +407,14 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
                 'MinSignAgreement',   RELAX_cfg.RefPop_MinSignAgreement, ...
                 'MaxAmplitudeSpread', RELAX_cfg.RefPop_MaxAmplitudeSpread, ...
                 'Detect', {'WindowMs',               RELAX_cfg.PopDetect_WindowMs, ...
-                           'TransitionMs',           RELAX_cfg.PopDetect_TransitionMs, ...
-                           'ZThreshold',             RELAX_cfg.PopDetect_ZThreshold, ...
-                           'ChannelZThreshold',      RELAX_cfg.PopDetect_ChannelZThreshold, ...
+                           'TransitionMs',           RELAX_cfg.RefPop_TransitionMs, ...
+                           'ZThreshold',             RELAX_cfg.RefPop_ZThreshold, ...
+                           'ChannelZThreshold',      RELAX_cfg.RefPop_ChannelZThreshold, ...
                            'MinAmplitudeMicrovolts', RELAX_cfg.RefPop_MinAmplitudeMicrovolts, ...
                            'RefractoryMs',           RELAX_cfg.PopDetect_RefractoryMs, ...
                            'RefineTransition',       RELAX_cfg.PopDetect_RefineTransition, ...
-                           'SlopeBaselineMs',        RELAX_cfg.PopDetect_SlopeBaselineMs, ...
-                           'SlopeNoiseFloorMicrovolts', RELAX_cfg.PopDetect_SlopeNoiseFloorMicrovolts, ...
+                           'SlopeBaselineMs',        RELAX_cfg.RefPop_SlopeBaselineMs, ...
+                           'SlopeNoiseFloorMicrovolts', RELAX_cfg.RefPop_SlopeNoiseFloorMicrovolts, ...
                            'SlopeSpreadQuantile',    RELAX_cfg.PopDetect_SlopeSpreadQuantile});
             RefPopRepairInfo = struct('available', false, 'status', 'not run');
             if ~RefPopInfo.available
@@ -941,10 +947,10 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     end
     
     if RELAX_cfg.saveextremesrejected==1
-        if ~exist([RELAX_cfg.foldername, filesep 'RELAXProcessed' filesep 'Extremes_Rejected'], 'dir')
-            mkdir([RELAX_cfg.foldername, filesep 'RELAXProcessed' filesep 'Extremes_Rejected'])
+        if ~exist([RELAX_cfg.foldername, filesep RELAX_cfg.OutputFolderName filesep 'Extremes_Rejected'], 'dir')
+            mkdir([RELAX_cfg.foldername, filesep RELAX_cfg.OutputFolderName filesep 'Extremes_Rejected'])
         end
-        SaveSetExtremes_Rejected =[RELAX_cfg.foldername, filesep 'RELAXProcessed' filesep 'Extremes_Rejected', filesep FileName '_Extremes_Rejected.set'];    
+        SaveSetExtremes_Rejected =[RELAX_cfg.foldername, filesep RELAX_cfg.OutputFolderName filesep 'Extremes_Rejected', filesep FileName '_Extremes_Rejected.set'];    
         EEG = pop_saveset( rawEEG, SaveSetExtremes_Rejected ); % If desired, save data here with bad channels deleted, filtering applied, extreme outlying data periods marked
     end
 
@@ -1004,10 +1010,10 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
         EEG = rmfield(EEG,'RELAXProcessing');
         % Save round 1 MWF pre-processing:
         if RELAX_cfg.saveround1==1
-            if ~exist([RELAX_cfg.foldername, filesep 'RELAXProcessed' filesep '1xMWF'], 'dir')
-                mkdir([RELAX_cfg.foldername, filesep 'RELAXProcessed' filesep '1xMWF'])
+            if ~exist([RELAX_cfg.foldername, filesep RELAX_cfg.OutputFolderName filesep '1xMWF'], 'dir')
+                mkdir([RELAX_cfg.foldername, filesep RELAX_cfg.OutputFolderName filesep '1xMWF'])
             end
-            SaveSetMWF1 =[RELAX_cfg.foldername, filesep 'RELAXProcessed' filesep '1xMWF', filesep FileName '_MWF1.set'];    
+            SaveSetMWF1 =[RELAX_cfg.foldername, filesep RELAX_cfg.OutputFolderName filesep '1xMWF', filesep FileName '_MWF1.set'];    
             EEG = pop_saveset( EEG, SaveSetMWF1 ); 
         end
     end
@@ -1085,10 +1091,10 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
         EEG = rmfield(EEG,'RELAXProcessing');
         % Save round 2 MWF pre-processing:
         if RELAX_cfg.saveround2==1
-            if ~exist([RELAX_cfg.foldername, filesep 'RELAXProcessed' filesep '2xMWF'], 'dir')
-                mkdir([RELAX_cfg.foldername, filesep 'RELAXProcessed' filesep '2xMWF'])
+            if ~exist([RELAX_cfg.foldername, filesep RELAX_cfg.OutputFolderName filesep '2xMWF'], 'dir')
+                mkdir([RELAX_cfg.foldername, filesep RELAX_cfg.OutputFolderName filesep '2xMWF'])
             end
-            SaveSetMWF2 =[RELAX_cfg.foldername, filesep 'RELAXProcessed' filesep '2xMWF', filesep FileName '_MWF2.set'];    
+            SaveSetMWF2 =[RELAX_cfg.foldername, filesep RELAX_cfg.OutputFolderName filesep '2xMWF', filesep FileName '_MWF2.set'];    
             EEG = pop_saveset( EEG, SaveSetMWF2 ); 
         end     
     end
@@ -1186,10 +1192,10 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
         EEG = rmfield(EEG,'RELAXProcessing');
 
         if RELAX_cfg.saveround3==1
-            if ~exist([RELAX_cfg.foldername, filesep 'RELAXProcessed' filesep '3xMWF'], 'dir')
-                mkdir([RELAX_cfg.foldername, filesep 'RELAXProcessed' filesep '3xMWF'])
+            if ~exist([RELAX_cfg.foldername, filesep RELAX_cfg.OutputFolderName filesep '3xMWF'], 'dir')
+                mkdir([RELAX_cfg.foldername, filesep RELAX_cfg.OutputFolderName filesep '3xMWF'])
             end
-            SaveSetMWF3 =[RELAX_cfg.foldername,filesep 'RELAXProcessed' filesep '3xMWF', filesep FileName '_MWF3.set'];    
+            SaveSetMWF3 =[RELAX_cfg.foldername,filesep RELAX_cfg.OutputFolderName filesep '3xMWF', filesep FileName '_MWF3.set'];    
             EEG = pop_saveset( EEG, SaveSetMWF3 ); 
         end         
     end
@@ -1301,7 +1307,8 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
         [EEG, EEGartifacts] = GEDAI(EEG, RELAX_cfg.GEDAI_ArtifactThreshold, RELAX_cfg.GEDAI_EpochCycles, ...
             RELAX_cfg.GEDAI_LowcutFreq, refCOV, true, RELAX_cfg.GEDAI_Visualize, ...
             RELAX_cfg.GEDAI_EpochENOVAThreshold, RELAX_cfg.GEDAI_ChanENOVAThreshold, [], ...
-            RELAX_cfg.GEDAI_SlidingWindowSec, RELAX_cfg.GEDAI_BroadbandArtifactThreshold, RELAX_cfg.GEDAI_MinEpochSize);
+            RELAX_cfg.GEDAI_SlidingWindowSec, RELAX_cfg.GEDAI_BroadbandArtifactThreshold, RELAX_cfg.GEDAI_MinEpochSize, ...
+            [], RELAX_cfg.GEDAI_BroadbandOnly);
 
         nBoundaries_postGEDAI = sum(isBoundary(EEG.event));
         assert(nBoundaries_postGEDAI == nBoundaries_preGEDAI, ...
@@ -1488,24 +1495,24 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     end
 
     %% SAVE FILE:
-    if ~exist([RELAX_cfg.foldername, filesep 'RELAXProcessed' filesep 'Cleaned_Data'], 'dir')
-        mkdir([RELAX_cfg.foldername, filesep 'RELAXProcessed' filesep 'Cleaned_Data'])
+    if ~exist([RELAX_cfg.foldername, filesep RELAX_cfg.OutputFolderName filesep 'Cleaned_Data'], 'dir')
+        mkdir([RELAX_cfg.foldername, filesep RELAX_cfg.OutputFolderName filesep 'Cleaned_Data'])
     end
     if RELAX_cfg.Run_GEDAI==1
         % Include GEDAI in savefile name and save artifacts file. IMK added
         savingfilename = '_RELAX_GEDAI.set';
         
-         if ~exist([RELAX_cfg.foldername, filesep 'RELAXProcessed' filesep 'GEDAI_artifacts'], 'dir')
-            mkdir([RELAX_cfg.foldername, filesep 'RELAXProcessed' filesep 'GEDAI_artifacts'])
+         if ~exist([RELAX_cfg.foldername, filesep RELAX_cfg.OutputFolderName filesep 'GEDAI_artifacts'], 'dir')
+            mkdir([RELAX_cfg.foldername, filesep RELAX_cfg.OutputFolderName filesep 'GEDAI_artifacts'])
          end
          
-        SaveSet_ArtifactsFile =[RELAX_cfg.foldername,filesep 'RELAXProcessed' filesep 'GEDAI_artifacts', filesep FileName '_RELAX_GEDAI_artifacts.set'];
+        SaveSet_ArtifactsFile =[RELAX_cfg.foldername,filesep RELAX_cfg.OutputFolderName filesep 'GEDAI_artifacts', filesep FileName '_RELAX_GEDAI_artifacts.set'];
         EEGartifacts = pop_saveset( EEGartifacts, SaveSet_ArtifactsFile ); 
     else
         savingfilename = '_RELAX.set';
     end
     % Save clean EEG
-    SaveSet_CleanedFile =[RELAX_cfg.foldername,filesep 'RELAXProcessed' filesep 'Cleaned_Data', filesep FileName savingfilename];
+    SaveSet_CleanedFile =[RELAX_cfg.foldername,filesep RELAX_cfg.OutputFolderName filesep 'Cleaned_Data', filesep FileName savingfilename];
     EEG.RELAX_settings_used_to_clean_this_file=RELAX_cfg;
     EEG = pop_saveset( EEG, SaveSet_CleanedFile );
     
@@ -1646,7 +1653,7 @@ if ~exist('RELAX_issues_to_check', 'var'); RELAX_issues_to_check = table(); end
 set(groot, 'defaultAxesTickLabelInterpreter','none');
 if RELAX_cfg.computecleanedmetrics==1
     % Create output directory for figures
-    fig_dir = fullfile(RELAX_cfg.myPath, 'RELAXProcessed', 'QualityMetrics_Figures');
+    fig_dir = fullfile(RELAX_cfg.myPath, RELAX_cfg.OutputFolderName, 'QualityMetrics_Figures');
     if ~exist(fig_dir, 'dir')
         mkdir(fig_dir);
     end

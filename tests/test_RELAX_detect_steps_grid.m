@@ -73,7 +73,7 @@ function test_RELAX_detect_steps_grid()
     assertInfoEqual(oneInfo, defInfo, 'single pair');
 
     %% ---- 3. a segment too short for any window: every pair reports unavailable ----
-    [gSteps, gInfo] = RELAX_detect_steps(mkEEG(randn(2, 300)), 'ThresholdPairs', pairs);
+    [gSteps, gInfo] = RELAX_detect_steps(mkEEG(randn(2, 150)), 'ThresholdPairs', pairs);
     assert(numel(gInfo) == size(pairs, 1) && ~any([gInfo.available]), ...
         'too-short data: every pair unavailable');
     assert(all(arrayfun(@(s) isempty(s.sample), gSteps)), 'too-short data: no steps for any pair');

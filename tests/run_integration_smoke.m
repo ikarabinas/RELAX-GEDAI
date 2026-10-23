@@ -28,6 +28,9 @@ function run_integration_smoke()
     % Electrode-pop stage at its shipped defaults (on in the SET_PARAMETERS script since
     % 2026-09-17; exercised here for plumbing - eye mask, spatial fill, excision path).
     RELAX_cfg.Perform_pop_artifact_repair = 1;
+    % Reference-pop sub-stage: plumbing only (the fixture may contain no reference pops;
+    % the covariates must still be written).
+    RELAX_cfg.Perform_reference_pop_repair = 1;
 
     % Everything else copied from RELAX_SET_PARAMETERS_AND_RUN_slurm.m
     RELAX_cfg.Perform_targeted_wICA = 1;

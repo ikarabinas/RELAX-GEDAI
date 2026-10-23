@@ -37,6 +37,21 @@ function test_RELAX_check_boundary_support()
         RELAX_check_boundary_support(EEG_without, cfg);
     end
 
+    % Broadband-only GEDAI is the boundary-checked mode and must NOT be guarded; the
+    % full wavelet-band GEDAI still is
+    cfg = safe_cfg;
+    cfg.Run_GEDAI = 1;
+    cfg.GEDAI_BroadbandOnly = true;
+    RELAX_check_boundary_support(EEG_with, cfg);
+    cfg.GEDAI_BroadbandOnly = false;
+    threw = false;
+    try
+        RELAX_check_boundary_support(EEG_with, cfg);
+    catch err
+        threw = strcmp(err.identifier, 'RELAX:boundaryUnsafeStage');
+    end
+    assert(threw, 'GEDAI with wavelet bands must still be guarded');
+
     % The Butterworth notch is boundary-aware (RELAX_filtbutter's bandstop branch pads
     % by the stop-band width) and must NEVER be guarded
     cfg = safe_cfg;

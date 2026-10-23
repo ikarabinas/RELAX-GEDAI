@@ -75,7 +75,7 @@ function test_RELAX_subtract_reference_pops()
     assert(max(abs(double(outS.data(live, :)) - truth(live, :)), [], 'all') < 1e-2);
 
     %% 6. end to end with the detector: detect -> subtract -> nothing left, E5's pop still there
-    [refSteps6, refInfo6] = RELAX_detect_reference_pops(EEG);
+    [refSteps6, refInfo6] = RELAX_detect_reference_pops(EEG, 'Detect', {'SlopeNoiseFloorMicrovolts', 0.1});
     assert(refInfo6.nSteps == 2, 'both reference pops detected (got %d)', refInfo6.nSteps);
     [out6, info6] = RELAX_subtract_reference_pops(EEG, refSteps6, refInfo6.refChannel.data, ...
         'WindowMs', refInfo6.detectInfo.params.WindowMs);
@@ -83,7 +83,7 @@ function test_RELAX_subtract_reference_pops()
     resid6 = out6.data(live, :) - truth(live, :);
     assert(max(abs(resid6(:))) < 3 * noise, 'detected steps restore s_i to within the noise (max %.1f)', max(abs(resid6(:))));
     after = out6; after.data(1, :) = 0;
-    [~, refInfoAfter] = RELAX_detect_reference_pops(after);
+    [~, refInfoAfter] = RELAX_detect_reference_pops(after, 'Detect', {'SlopeNoiseFloorMicrovolts', 0.1});
     assert(refInfoAfter.nSteps == 0, 'no reference pop left (found %d)', refInfoAfter.nSteps);
     [steps, pinfo] = RELAX_detect_steps(after, 'CommonModeChannelFraction', 0.15);
     assert(pinfo.nCommonModeEvents == 0, 'no common-mode event left (found %d)', pinfo.nCommonModeEvents);
