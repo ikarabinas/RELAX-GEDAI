@@ -8,8 +8,9 @@
 % .sampleSize, .seed, .holeDepthLimit). A cleaned file whose header cannot be read, or lacks
 % EEG.allchan or EEG.RELAX.ListOfChannelsAfterRejections, keeps its muscle metrics and gets NaN
 % BlinkRatio, NInterpolated and HoleDepth (so it is unscreened through BlinkRatio and HoleDepth), an
-% empty InterpolatedReasons and NaN NInterpolated_<reason> counts; the error message goes in SheetMessage. A cleaned file whose BlinkRatio or HoleDepth is NaN for
-% another reason has that reason (the blink and/or hole-depth note) in SheetMessage. See
+% empty InterpolatedReasons and NaN NInterpolated_<reason> counts; the error message goes in
+% SheetMessage. A cleaned file whose BlinkRatio or HoleDepth is NaN for another reason has that
+% reason (the blink and/or hole-depth note) in SheetMessage. See
 % RELAX_screen_score_table for the columns of screen and meta.
 
 function [screen, meta] = RELAX_screen_run_score(opts)

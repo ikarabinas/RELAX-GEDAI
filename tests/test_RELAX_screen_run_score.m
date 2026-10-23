@@ -7,9 +7,12 @@ function test_RELAX_screen_run_score()
     [screen, meta] = RELAX_screen_run_score(opts);
     assert(any(screen.File == "boundary_fixture"));
     assert(screen.NInterpolated(screen.File == "boundary_fixture") == 5, 'interpolated = allchan minus kept channels');
-    reasonCounts = screen{:, "NInterpolated_" + ["impedance" "pop" "bridged" "PREP" "extreme" "muscle" "unknown"]};
-    assert(screen.NInterpolated == sum(reasonCounts), 'the reason counts add up to the interpolated channels');
-    assert(screen.NInterpolated == 0 || strlength(screen.InterpolatedReasons) > 0, 'every interpolated channel has a reason');
+    fixtureRow = screen.File == "boundary_fixture";
+    reasonNames = ["impedance" "pop" "bridged" "PREP" "extreme" "muscle" "unknown"];
+    fixtureReasonCounts = screen{fixtureRow, "NInterpolated_" + reasonNames};
+    assert(screen.NInterpolated(fixtureRow) == sum(fixtureReasonCounts), 'the reason counts add up to the interpolated channels');
+    assert(isequal(fixtureReasonCounts, [0 0 0 0 1 4 0]), 'the fixture header lists one extreme and four muscle channels');
+    assert(screen.InterpolatedReasons(fixtureRow) == "extreme: E226; muscle: E81 E90 E205 E234");
     assert(isfinite(screen.HoleDepth(screen.File == "boundary_fixture")), 'the hole is measured from the electrode coordinates');
     for f = ["residual_screen.mat", "residual_screen.csv", "README.md"]
         assert(isfile(fullfile(outDir, f)), 'missing %s', f);
