@@ -23,6 +23,14 @@ function test_RELAX_screen_muscle_slopes()
 
     unavailable = RELAX_screen_muscle_slopes(eeg, struct('MuscleSlopeThreshold', -0.31, 'LowPassFilter', 60));
     assert(isempty(unavailable.values) && strlength(unavailable.note) > 0, 'a 60 Hz low-pass cannot yield 7-75 Hz slopes');
+    withoutLowPass = RELAX_screen_muscle_slopes(eeg, struct('MuscleSlopeThreshold', -0.31));
+    assert(~isempty(withoutLowPass.values) && withoutLowPass.note == "", 'a cfg without LowPassFilter is read as 80 Hz');
+
+    uncleaned = eeg;
+    uncleaned.RELAX = rmfield(uncleaned.RELAX, 'Data_has_been_cleaned');
+    failed = RELAX_screen_muscle_slopes(uncleaned, cfg);
+    assert(isempty(failed.values) && isempty(failed.startSeconds), 'a failed measurement has no values');
+    assert(contains(failed.note, "could not be computed") && contains(failed.note, "Data_has_been_cleaned"), 'the note carries the error message');
     fprintf('test_RELAX_screen_muscle_slopes: PASS\n');
 end
 

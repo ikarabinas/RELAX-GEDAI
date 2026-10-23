@@ -16,7 +16,8 @@
 %
 % Windows are ranked on the cleaned data. Muscle windows are the epochs with the highest muscle slope
 % on any real channel (RELAX_screen_muscle_slopes), shown even when none is above cfg.MuscleSlopeThreshold;
-% each shows up to 4 blink electrodes plus the 2 non-blink channels with the highest slope in that epoch.
+% each shows up to 4 blink electrodes plus the 2 other channels, blink electrodes or not, with the highest
+% slope in that epoch, so the channel holding the epoch's highest slope is always drawn.
 % Blink windows show up to 4 blink electrodes plus the 2 non-blink channels with the most 20-80 Hz power
 % inside the window, and are ranked on the blink electrodes that were not interpolated. A window slides to
 % stay inside its segment when the segment is long enough. The before-wICA trace is included when the
@@ -57,7 +58,7 @@ function sheet = RELAX_screen_sheet_data(paths, cfg, opts)
     sheet.interpolatedReasons = RELAX_screen_channel_reasons(cleanedEEG);
     sheet.baselineNote = baselineNote;
     sheet.muscleSlopeThreshold = slopes.threshold;
-    [sheet.muscle, sheet.muscleSlope, sheet.muscleSlopeChannel] = muscleWindows(cleanedEEG, baseline, slopes, shownBlinkLabels, blinkLabels, opts);
+    [sheet.muscle, sheet.muscleSlope, sheet.muscleSlopeChannel] = muscleWindows(cleanedEEG, baseline, slopes, shownBlinkLabels, opts);
 
     peaks = unique(RELAX_QC_blink_peaks(cleanedEEG, round(max(opts.blinkHalfSeconds, 0.5) * srate)));
     sheet.blinkN = numel(peaks);
@@ -103,7 +104,7 @@ function [baseline, note] = loadBaseline(paths, cfg, cleanedEEG)
     end
 end
 
-function [windows, slope, slopeChannel] = muscleWindows(cleanedEEG, baseline, slopes, shownBlinkLabels, blinkLabels, opts)
+function [windows, slope, slopeChannel] = muscleWindows(cleanedEEG, baseline, slopes, shownBlinkLabels, opts)
     srate = cleanedEEG.srate;
     windows = repmat(RELAX_QC_empty_window("muscle"), 1, opts.nWindows);
     slope = nan(1, opts.nWindows);
@@ -124,17 +125,17 @@ function [windows, slope, slopeChannel] = muscleWindows(cleanedEEG, baseline, sl
         epoch = sharingCentre(best);
         [~, loudestRow] = max(slopes.values(:, epoch));
         slopeChannel(k) = slopes.labels(loudestRow);
-        windows(k) = filledMuscleWindow(centres(k), cleanedEEG, baseline, slopes, epoch, shownBlinkLabels, blinkLabels, opts);
+        windows(k) = filledMuscleWindow(centres(k), cleanedEEG, baseline, slopes, epoch, shownBlinkLabels, opts);
     end
     for k = numel(centres) + 1 : opts.nWindows
         windows(k).note = shortfallNote("muscle epoch", "muscle epochs", numel(centres), nnz(~isnan(epochSlopes)), opts.windowSeconds);
     end
 end
 
-function w = filledMuscleWindow(centre, cleanedEEG, baseline, slopes, epoch, shownBlinkLabels, blinkLabels, opts)
-    nonBlinkRows = find(~ismember(slopes.labels, string(blinkLabels)));
-    [~, order] = sort(slopes.values(nonBlinkRows, epoch), 'descend', 'MissingPlacement', 'last');
-    steepest = cellstr(slopes.labels(nonBlinkRows(order(1:min(2, numel(order))))));
+function w = filledMuscleWindow(centre, cleanedEEG, baseline, slopes, epoch, shownBlinkLabels, opts)
+    unshownRows = find(~ismember(slopes.labels, string(shownBlinkLabels)));
+    [~, order] = sort(slopes.values(unshownRows, epoch), 'descend', 'MissingPlacement', 'last');
+    steepest = cellstr(slopes.labels(unshownRows(order(1:min(2, numel(order))))));
     w = RELAX_QC_fill_window(RELAX_QC_empty_window("muscle"), centre, baseline, cleanedEEG, [shownBlinkLabels steepest(:)'], opts.windowSeconds);
 end
 

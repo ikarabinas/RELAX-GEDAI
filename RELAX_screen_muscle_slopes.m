@@ -6,7 +6,7 @@
 % Inputs:
 %   cleanedEEG - a cleaned file with allchan and RELAX.ListOfChannelsAfterRejections, whose
 %                RELAX.Data_has_been_cleaned is 1
-%   cfg        - that participant's saved RELAX_cfg (MuscleSlopeThreshold, LowPassFilter)
+%   cfg        - that participant's saved RELAX_cfg (MuscleSlopeThreshold, and LowPassFilter, taken as 80 when absent)
 %
 % Slopes come from RELAX_metrics_muscle on the channels that were not interpolated: the 7-75 Hz log-log
 % slope of each 1 s epoch, one epoch every 0.5 s, as in the cleaned file's MuscleProportion metric.
@@ -26,8 +26,10 @@ function slopes = RELAX_screen_muscle_slopes(cleanedEEG, cfg)
     slopes.threshold = cfg.MuscleSlopeThreshold;
     slopes.note = "";
 
-    if cfg.LowPassFilter < 75
-        slopes.note = "Muscle slopes need data kept above 75 Hz, but the low-pass filter was " + cfg.LowPassFilter + " Hz";
+    lowPassHz = 80;
+    if isfield(cfg, 'LowPassFilter'), lowPassHz = cfg.LowPassFilter; end
+    if lowPassHz < 75
+        slopes.note = "Muscle slopes need data kept above 75 Hz, but the low-pass filter was " + lowPassHz + " Hz";
         return
     end
     try

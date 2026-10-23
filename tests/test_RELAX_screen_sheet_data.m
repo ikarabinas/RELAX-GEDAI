@@ -52,6 +52,7 @@ function test_RELAX_screen_sheet_data()
     fprintf('sheet fixture: %d muscle windows, %d blink windows, blinkN %d, baselineNote "%s"\n', ...
         nnz([sheet.muscle.available]), nnz([sheet.blink.available]), sheet.blinkN, sheet.baselineNote);
     test_muscle_windows_stay_off_segment_edges(loaded.RELAX_cfg);
+    test_top_slope_channel_is_drawn_when_it_is_an_unshown_blink_electrode(loaded.RELAX_cfg);
     fprintf('test_RELAX_screen_sheet_data: PASS\n');
 end
 
@@ -92,6 +93,32 @@ function test_muscle_windows_stay_off_segment_edges(loadedCfg)
     assert(isequal(sort(interpolated.interpolatedLabels(:)), sort(blinkLabelsPresent(:))) && ~any([interpolated.blink.available]), ...
            'blinks are not ranked on interpolated electrodes');
     assert(all(contains([interpolated.blink.note], "interpolated")));
+end
+
+function test_top_slope_channel_is_drawn_when_it_is_an_unshown_blink_electrode(loadedCfg)
+% With the backup blink row added only the first 4 blink electrodes are drawn as blink electrodes, but
+% the electrode holding the epoch's highest slope is still drawn, and named.
+    rng(5);
+    srate = 500; seconds = 20; nChan = 40;
+    chanlocs = make_qc_chanlocs(nChan);
+    blinkLabels = intersect(RELAX_screen_blink_labels(loadedCfg, 1), {chanlocs.labels}, 'stable');
+    assert(numel(blinkLabels) >= 5, 'the synthetic montage must contain more than 4 blink electrodes');
+    quietBlinkLabel = blinkLabels{5};
+    eeg = syntheticEeg(srate, seconds, chanlocs);
+    burstRow = find(strcmp({chanlocs.labels}, quietBlinkLabel));
+    burstSpan = round(4 * srate) + 1 : round(5 * srate);
+    eeg.data(burstRow, burstSpan) = eeg.data(burstRow, burstSpan) + 10 * diff(randn(1, numel(burstSpan) + 1));
+    folder = tempname; mkdir(folder); cleanup = onCleanup(@() rmdir(folder, 's'));
+    pop_saveset(eeg, 'filename', 'blink_burst_RELAX.set', 'filepath', folder);
+    paths = struct('cleaned', fullfile(folder, 'blink_burst_RELAX.set'), 'extremes', fullfile(folder, 'absent.set'));
+    opts = struct('windowSeconds', 3, 'nWindows', 3, 'blinkHalfSeconds', 0.5, ...
+                  'topoHalfSeconds', 0.05, 'blinkElectrodeFallback', 1);
+
+    sheet = RELAX_screen_sheet_data(paths, loadedCfg, opts);
+    strongest = sheet.muscle(1);
+    assert(sheet.muscleSlopeChannel(1) == quietBlinkLabel, 'the burst electrode holds the highest slope');
+    assert(ismember(quietBlinkLabel, strongest.channels) && ~ismember(quietBlinkLabel, blinkLabels(1:4)), 'it is drawn though it is not one of the 4 blink electrodes shown');
+    assert(numel(strongest.channels) == 6, 'four blink electrodes plus the two highest-slope others');
 end
 
 function eeg = syntheticEeg(srate, seconds, chanlocs)
