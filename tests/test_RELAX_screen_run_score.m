@@ -16,7 +16,7 @@ function test_RELAX_screen_run_score()
     assert(contains(readme, "1.4826 * MAD"), 'README explains the scale columns');
     assert(contains(readme, "No before-wICA trace:") && contains(readme, "separate line for each metric") && contains(readme, "Clear that folder"), 'README guide explains the header lines and stale sheets');
     assert(contains(readme, "Open rings mark electrodes that were interpolated") && contains(readme, "3 s each"), 'README guide describes the drawn sheet');
-    assert(contains(readme, "Filled electrodes mark the hole") && contains(readme, "NInterpolated_limit"), 'README guide describes the hole rule and the channel limit');
+    assert(contains(readme, "Amber filled electrodes mark the hole") && contains(readme, "NInterpolated_limit"), 'README guide describes the hole rule and the channel limit');
     assert(contains(readme, "BlinkRatio or HoleDepth is missing"), 'README names the unscreening metrics');
     assert(~isnan(screen.BlinkRatio) || strlength(screen.SheetMessage) > 0, 'a missing BlinkRatio is explained');
     assert(~isempty(meta.zeroScaleMetrics));

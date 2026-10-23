@@ -19,14 +19,17 @@
 % depth rows (robust z on a shared axis, hole depth on its own); the three loudest remaining
 % muscle bursts and the three loudest remaining blinks as full-width trace windows; and the
 % blink-locked topographies (before wICA, cleaned, removed, one colour scale, interpolated channels
-% circled, hole electrodes filled and named in the heading) with the blink-electrode time course.
+% circled, hole electrodes filled in amber) with the blink-electrode time course; the interpolated and
+% hole electrodes are listed by label above the maps, wrapped over as many lines as they need, whether
+% or not the file has blinks.
 % Windows without a before-wICA trace, maps without a baseline and files without blinks say so in
 % place of the missing panel.
 
 function RELAX_screen_draw_sheet(sheet, row, screen, meta, reviewDir)
 
     style = RELAX_QC_style();
-    place = sheetLayout();
+    electrodeLines = electrodeListLines(sheet, row, meta);
+    place = sheetLayout(numel(electrodeLines));
     fig = figure('Visible', 'off', 'Units', 'centimeters', 'Position', [0 0 place.widthCm place.heightCm], 'Color', 'w');
     page = axes(fig, 'Position', [0 0 1 1], 'XLim', [0 1], 'YLim', [0 1], 'Visible', 'off');
 
@@ -36,14 +39,16 @@ function RELAX_screen_draw_sheet(sheet, row, screen, meta, reviewDir)
                   sheet.interpolatedLabels, place.muscleLabelFromTop, place.muscleTopsFromTop, place, style);
     drawTraceRows(fig, page, "Blink", sheet.blink, sheet.blinkResidual, "%.0f µV left at the blink peak", ...
                   sheet.interpolatedLabels, place.blinkLabelFromTop, place.blinkTopsFromTop, place, style);
-    drawTopographyRow(fig, page, sheet, row, meta, place, style);
+    drawTopographyRow(fig, page, sheet, row, electrodeLines, place, style);
 
     RELAX_QC_save_figure(fig, reviewDir, char(row.File));
 end
 
-function place = sheetLayout()
+function place = sheetLayout(nElectrodeLines)
+    place.electrodeLineCm = 0.55;
+    electrodeListCm = nElectrodeLines * place.electrodeLineCm;
     place.widthCm = 30;
-    place.heightCm = 74.4;
+    place.heightCm = 74.4 + electrodeListCm;
     place.left = 0.07;
     place.right = 0.97;
     place.titleFromTop = 0.5;
@@ -57,7 +62,7 @@ function place = sheetLayout()
     place.blinkLabelFromTop = 38.5;
     place.blinkTopsFromTop = 39.0 + (0:2) * 7.7;
     place.topoLabelFromTop = 63.7;
-    place.topoTopFromTop = 64.3;
+    place.topoTopFromTop = place.topoLabelFromTop + electrodeListCm + 0.6;
     place.topoHeightCm = 7;
     place.fromTop = @(cm) 1 - cm / place.heightCm;
     place.bottomFromTop = @(topCm, heightCm) 1 - (topCm + heightCm) / place.heightCm;
@@ -261,11 +266,15 @@ function value = oneTwoFiveBelow(x)
     value = steps(find(steps <= x * (1 + 1e-9), 1, 'last'));
 end
 
-function drawTopographyRow(fig, page, sheet, row, meta, place, style)
+function drawTopographyRow(fig, page, sheet, row, electrodeLines, place, style)
     height = place.topoHeightCm / place.heightCm;
     bottom = place.bottomFromTop(place.topoTopFromTop, place.topoHeightCm);
-    text(page, place.left, place.fromTop(place.topoLabelFromTop), blinkAverageHeading(sheet, row, meta), 'FontWeight', 'bold', ...
+    text(page, place.left, place.fromTop(place.topoLabelFromTop), blinkAverageHeading(sheet), 'FontWeight', 'bold', ...
          'FontSize', style.fontSize + 3, 'Color', style.ink, 'VerticalAlignment', 'bottom', 'Interpreter', 'none');
+    if ~isempty(electrodeLines)
+        text(page, place.left, place.fromTop(place.topoLabelFromTop + 0.05), strjoin(electrodeLines, newline), ...
+             'FontSize', style.fontSize + 2, 'Color', style.ink, 'VerticalAlignment', 'top', 'Interpreter', 'none');
+    end
     mapWidth = 0.19;
     mapLefts = place.left + (0:2) * (mapWidth + 0.015);
     mapAxes = arrayfun(@(left) axes(fig, 'Position', [left, bottom, mapWidth, height]), mapLefts);
@@ -324,7 +333,7 @@ function fillHoleElectrodes(ax, chanlocs, interpolatedIdx, holeLabels, style)
         return
     end
     line(ax, rings.XData(isHole), rings.YData(isHole), rings.ZData(isHole), 'LineStyle', 'none', 'Marker', 'o', ...
-         'MarkerSize', 8, 'LineWidth', 0.75, 'MarkerFaceColor', style.channelScreens(5, :), 'MarkerEdgeColor', 'k');
+         'MarkerSize', 8, 'LineWidth', 0.75, 'MarkerFaceColor', style.channelScreens(1, :), 'MarkerEdgeColor', 'k');
 end
 
 function labels = holeElectrodeLabels(row)
@@ -332,19 +341,35 @@ function labels = holeElectrodeLabels(row)
     if strlength(row.HoleElectrodes) > 0, labels = split(row.HoleElectrodes)'; end
 end
 
-function heading = blinkAverageHeading(sheet, row, meta)
+function heading = blinkAverageHeading(sheet)
     if sheet.blinkN == 0
         heading = "Blink-locked average: no blinks in this file";
-        return
+    else
+        heading = "Blink-locked average over all " + sheet.blinkN + " blinks (baseline −500 to −300 ms, ±50 ms at the peak)";
     end
-    heading = "Blink-locked average over all " + sheet.blinkN + " blinks (baseline −500 to −300 ms, ±50 ms at the peak)";
-    if ~isempty(sheet.interpolatedLabels)
-        heading = heading + newline + "Circled electrodes are interpolated: " + strjoin(string(sheet.interpolatedLabels), ", ");
+end
+
+function lines = electrodeListLines(sheet, row, meta)
+    holePrefix = sprintf("Hole electrodes (no real electrode within %.1f× spacing):", meta.holeDepthLimit);
+    lines = [wrapLabels("Circled electrodes are interpolated:", string(sheet.interpolatedLabels(:))'); ...
+             wrapLabels(holePrefix, holeElectrodeLabels(row))];
+end
+
+function lines = wrapLabels(prefix, labels)
+    maxCharacters = 110;
+    lines = strings(0, 1);
+    if isempty(labels), return, end
+    labels(1:end-1) = labels(1:end-1) + ",";
+    current = prefix;
+    for label = labels
+        if strlength(current) + 1 + strlength(label) > maxCharacters
+            lines(end + 1, 1) = current; %#ok<AGROW>
+            current = label;
+        else
+            current = current + " " + label;
+        end
     end
-    holeLabels = holeElectrodeLabels(row);
-    if ~isempty(holeLabels)
-        heading = heading + newline + sprintf("Hole electrodes (no real electrode within %.1f× spacing): ", meta.holeDepthLimit) + strjoin(holeLabels, ", ");
-    end
+    lines(end + 1, 1) = current;
 end
 
 function drawBlinkTimeCourse(ax, avg, hasBaseline, style)

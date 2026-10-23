@@ -48,5 +48,11 @@ function test_RELAX_screen_score_table()
     opts.sampleSize = 50;
     s3 = RELAX_screen_score_table(T, metrics, opts);
     assert(isequal(s3.InReviewSample, s3.ScreenOutcome == "pass"));
+    atCutoff = opts; atCutoff.cutoff = s.MuscleProportion_z(6);
+    s4 = RELAX_screen_score_table(T, metrics, atCutoff);
+    assert(~s4.MuscleProportion_flag(6), 'a z exactly at the cutoff does not flag');
+    justBelowCutoff = opts; justBelowCutoff.cutoff = s.MuscleProportion_z(6) - 1e-9;
+    s5 = RELAX_screen_score_table(T, metrics, justBelowCutoff);
+    assert(s5.MuscleProportion_flag(6), 'a z just above the cutoff flags');
     fprintf('test_RELAX_screen_score_table: PASS\n');
 end

@@ -9,7 +9,7 @@ function test_RELAX_screen_draw_sheet()
     [screen, meta, sheet] = syntheticSheet();
 
     muscleSentence = "MuscleProportion is 4.2 robust SD above the dataset median (cutoff 3.0)";
-    holeSentence = "Interpolation hole 1.7× electrode spacing deep at E5 (limit 1.4)";
+    holeSentence = "Interpolation hole 1.70× electrode spacing deep at E5 (limit 1.4)";
     assert(RELAX_screen_reason(screen(2, :), meta) == muscleSentence + "; " + holeSentence);
     holeOnly = screen(2, :); holeOnly.MuscleProportion_flag = false;
     assert(RELAX_screen_reason(holeOnly, meta) == holeSentence);
@@ -30,7 +30,7 @@ function test_RELAX_screen_draw_sheet()
     notCleaned = screen(1, :); notCleaned.ScreenOutcome = "notCleaned";
     assert(RELAX_screen_reason(notCleaned, meta) == "Not cleaned by the pipeline");
 
-    RELAX_screen_draw_sheet(sheet, screen(2, :), screen, meta, reviewDir);
+    drawWithHoleMarkerWarningFatal(sheet, screen(2, :), screen, meta, reviewDir);
 
     noBaseline = sheet; noBaseline.baselineNote = "Baseline not aligned";
     for k = 1:3
@@ -56,6 +56,14 @@ function test_RELAX_screen_draw_sheet()
     deepHoles = screen; deepHoles.HoleDepth(1:2) = [9; 1.7];
     RELAX_screen_draw_sheet(sheet, deepHoles(2, :), deepHoles, meta, fullfile(reviewDir, 'deepHoles'));
     assert(isfile(fullfile(reviewDir, 'deepHoles', 'f2.png')));
+
+    manyLabels = arrayfun(@(k) sprintf('E%d', k), 1:24, 'UniformOutput', false);
+    crowded = sheet; crowded.interpolatedLabels = manyLabels;
+    crowdedRow = screen(2, :); crowdedRow.HoleElectrodes = strjoin(string(manyLabels), " ");
+    drawWithHoleMarkerWarningFatal(crowded, crowdedRow, screen, meta, fullfile(reviewDir, 'crowded'));
+    crowdedNoBlinks = noBlinks; crowdedNoBlinks.interpolatedLabels = manyLabels;
+    drawWithHoleMarkerWarningFatal(crowdedNoBlinks, crowdedRow, screen, meta, fullfile(reviewDir, 'crowdedNoBlinks'));
+    assert(isfile(fullfile(reviewDir, 'crowded', 'f2.png')) && isfile(fullfile(reviewDir, 'crowdedNoBlinks', 'f2.png')));
 
     allZero = screen; allZero.MuscleStrength_z(:) = NaN;
     meta.zeroScaleMetrics = "MuscleStrength";
@@ -106,6 +114,12 @@ end
 function avg = withoutBaseline(avg)
     avg.erpBaseline(:) = NaN; avg.erpRemoved(:) = NaN;
     avg.topoBaseline(:) = NaN; avg.topoRemoved(:) = NaN;
+end
+
+function drawWithHoleMarkerWarningFatal(sheet, row, screen, meta, reviewDir)
+    previous = warning('error', 'RELAX_screen:holeMarkers');
+    restore = onCleanup(@() warning(previous));
+    RELAX_screen_draw_sheet(sheet, row, screen, meta, reviewDir);
 end
 
 function removeIfPresent(folder)
