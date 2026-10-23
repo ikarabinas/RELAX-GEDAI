@@ -25,6 +25,7 @@ function test_RELAX_screen_run_score()
     assert(contains(readme, "Amber filled electrodes mark the hole") && contains(readme, "NInterpolated_limit"), 'README guide describes the hole rule and the channel limit');
     assert(contains(readme, "InterpolatedReasons") && contains(readme, "NInterpolated_<reason>"), 'README explains the removal reasons');
     assert(contains(readme, "highest muscle slope") && contains(readme, "its channel and the threshold") && ~contains(readme, "20-80 Hz power as a multiple"), 'README guide describes the slope-ranked muscle windows');
+    assert(contains(readme, "lies inside the 3 s window") && contains(readme, "each blink window shows up to 4 blink electrodes"), 'README guide says what the captions time and which channels each window shows');
     assert(contains(readme, "'(interp., <reason>)'") && contains(readme, "Interpolated for <reason>"), 'README guide describes the reasons drawn on the sheet');
     assert(contains(readme, "BlinkRatio or HoleDepth is missing"), 'README names the unscreening metrics');
     assert(~isnan(screen.BlinkRatio) || strlength(screen.SheetMessage) > 0, 'a missing BlinkRatio is explained');

@@ -1,6 +1,6 @@
 % RELAX_screen_draw_sheet() - One file's review sheet: why it passed or failed the residual-noise
-%                             screen, and what its loudest remaining muscle bursts and blinks
-%                             look like.
+%                             screen, and what its highest-slope muscle epochs and its loudest
+%                             remaining blinks look like.
 %
 % Usage:
 %   >> RELAX_screen_draw_sheet(sheet, row, screen, meta, reviewDir);
@@ -16,9 +16,9 @@
 % row for each of meta.metricNames giving the value, dataset median, robust z, cutoff and flag
 % (the hole depth row gives its limit as the cutoff and no median or z, the interpolated-channel
 % row its channel limit), with a strip plot of every cleaned file beside the muscle, blink and hole
-% depth rows (robust z on a shared axis, hole depth on its own); the three loudest remaining
-% muscle epochs (those with the highest muscle slope, captioned with the slope, its channel and the
-% threshold) and the three loudest remaining blinks as full-width trace windows, interpolated channels
+% depth rows (robust z on a shared axis, hole depth on its own); the three muscle epochs with the
+% highest muscle slope (captioned with the slope, its channel and the threshold) and the three loudest
+% remaining blinks as full-width trace windows, interpolated channels
 % marked on the axis with the reason they were removed; and the
 % blink-locked topographies (before wICA, cleaned, removed, one colour scale, interpolated channels
 % circled, hole electrodes filled in amber) with the blink-electrode time course; the interpolated
@@ -40,9 +40,9 @@ function RELAX_screen_draw_sheet(sheet, row, screen, meta, reviewDir)
     muscleCaption = @(k, w) RELAX_screen_muscle_caption(k, sheet.muscleEpochStart(k), sheet.muscleSlope(k), ...
                                                          sheet.muscleSlopeChannel(k), sheet.muscleSlopeThreshold);
     blinkCaption = @(k, w) sprintf("Blink %d, starts at %.1f s: %.0f µV left at the blink peak", k, w.t(1), sheet.blinkResidual(k));
-    drawTraceRows(fig, page, "Muscle burst", sheet.muscle, muscleCaption, ...
+    drawTraceRows(fig, page, "Muscle epoch", "highest slope first", sheet.muscle, muscleCaption, ...
                   sheet.interpolatedReasons, place.muscleLabelFromTop, place.muscleTopsFromTop, place, style);
-    drawTraceRows(fig, page, "Blink", sheet.blink, blinkCaption, ...
+    drawTraceRows(fig, page, "Blink", "loudest first", sheet.blink, blinkCaption, ...
                   sheet.interpolatedReasons, place.blinkLabelFromTop, place.blinkTopsFromTop, place, style);
     drawTopographyRow(fig, page, sheet, row, electrodeLines, place, style);
 
@@ -199,8 +199,8 @@ function s = flagText(flagged)
     if flagged, s = "FLAGGED"; else, s = "no"; end
 end
 
-function drawTraceRows(fig, page, label, windows, caption, interpolatedReasons, labelFromTop, topsFromTop, place, style)
-    text(page, place.left, place.fromTop(labelFromTop), label + "s, loudest first", 'FontWeight', 'bold', ...
+function drawTraceRows(fig, page, label, order, windows, caption, interpolatedReasons, labelFromTop, topsFromTop, place, style)
+    text(page, place.left, place.fromTop(labelFromTop), label + "s, " + order, 'FontWeight', 'bold', ...
          'FontSize', style.fontSize + 3, 'Color', style.ink, 'VerticalAlignment', 'bottom');
     drawTraceKey(page, any(arrayfun(@(w) ~isempty(w.before), windows)), place.fromTop(labelFromTop) + 0.003, style);
     for k = 1:numel(windows)
@@ -214,7 +214,7 @@ function drawTraceRows(fig, page, label, windows, caption, interpolatedReasons, 
         handles = RELAX_QC_draw_traces(ax, w, "Before wICA", "Cleaned", style);
         legend(ax, 'off');
         trimEmptyHeadroom(ax, handles, numel(w.channels), style);
-        markInterpolatedTicks(ax, interpolatedReasons);
+        ax.YTickLabel = RELAX_screen_tick_labels(ax.YTickLabel, interpolatedReasons);
         drawScaleBar(ax, handles.spacing, style);
         ax.XTickLabelMode = 'auto';
         xlabel(ax, caption(k, w), 'FontSize', style.fontSize + 2, 'FontWeight', 'bold');
@@ -244,14 +244,6 @@ function trimEmptyHeadroom(ax, handles, nChannels, style)
     plotted = [handles.before; handles.after];
     clipped = arrayfun(@(h) any(h.YData < yRange(1) | h.YData > yRange(2)), plotted);
     RELAX_QC_mark_clipped(ax, any(clipped), style);
-end
-
-function markInterpolatedTicks(ax, interpolatedReasons)
-    ticks = string(ax.YTickLabel);
-    reasons = interpolatedReasons.reasons(:);
-    [isInterpolated, reasonIdx] = ismember(ticks, interpolatedReasons.labels);
-    ticks(isInterpolated) = ticks(isInterpolated) + " (interp., " + reasons(reasonIdx(isInterpolated)) + ")";
-    ax.YTickLabel = cellstr(ticks);
 end
 
 function drawScaleBar(ax, spacing, style)
