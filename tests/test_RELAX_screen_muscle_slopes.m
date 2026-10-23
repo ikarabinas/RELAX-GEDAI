@@ -7,6 +7,8 @@ function test_RELAX_screen_muscle_slopes()
     burstSpan = round(burstStart * srate) + 1 : round((burstStart + 1) * srate);
     burstRow = find(strcmp({eeg.chanlocs.labels}, burstChannel));
     eeg.data(burstRow, burstSpan) = eeg.data(burstRow, burstSpan) + 10 * std(eeg.data(burstRow, :)) * randn(1, numel(burstSpan));
+    keptNaNChannel = 'E3';
+    eeg.data(strcmp({eeg.chanlocs.labels}, keptNaNChannel), :) = NaN;
     cfg = struct('MuscleSlopeThreshold', -0.31, 'LowPassFilter', 80);
 
     slopes = RELAX_screen_muscle_slopes(eeg, cfg);
@@ -18,11 +20,15 @@ function test_RELAX_screen_muscle_slopes()
     [highest, epoch] = max(max(slopes.values, [], 1));
     [~, channel] = max(slopes.values(:, epoch));
     assert(slopes.labels(channel) == burstChannel, 'the highest slope is on the channel with the burst');
-    assert(abs(slopes.startSeconds(epoch) - burstStart) <= 0.5, 'the highest slope is at the burst');
+    assert(abs(slopes.startSeconds(epoch) - burstStart) <= 1 / srate, 'the highest slope is the epoch that starts with the burst');
+    nanRow = slopes.labels == keptNaNChannel;
+    assert(any(nanRow) && all(isnan(slopes.values(nanRow, :))), 'a kept channel with no data has NaN slopes');
     assert(highest > -0.31, 'the burst is above the muscle threshold');
 
     unavailable = RELAX_screen_muscle_slopes(eeg, struct('MuscleSlopeThreshold', -0.31, 'LowPassFilter', 60));
     assert(isempty(unavailable.values) && strlength(unavailable.note) > 0, 'a 60 Hz low-pass cannot yield 7-75 Hz slopes');
+    withoutThreshold = RELAX_screen_muscle_slopes(eeg, struct('LowPassFilter', 80));
+    assert(withoutThreshold.threshold == -0.59 && isequaln(withoutThreshold.values, slopes.values), 'a cfg without MuscleSlopeThreshold is read as the pipeline default -0.59');
     withoutLowPass = RELAX_screen_muscle_slopes(eeg, struct('MuscleSlopeThreshold', -0.31));
     assert(~isempty(withoutLowPass.values) && withoutLowPass.note == "", 'a cfg without LowPassFilter is read as 80 Hz');
 

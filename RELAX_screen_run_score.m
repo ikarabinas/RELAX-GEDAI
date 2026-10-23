@@ -10,7 +10,9 @@
 % BlinkRatio, NInterpolated and HoleDepth (so it is unscreened through BlinkRatio and HoleDepth), an
 % empty InterpolatedReasons and NaN NInterpolated_<reason> counts; the error message goes in
 % SheetMessage. A cleaned file whose BlinkRatio or HoleDepth is NaN for another reason has that
-% reason (the blink and/or hole-depth note) in SheetMessage. See
+% reason (the blink and/or hole-depth note) in SheetMessage. A file whose removal reasons cannot be
+% worked out from its header keeps all its other metrics, gets the empty reasons and NaN counts, and
+% has the error message added to SheetMessage. See
 % RELAX_screen_score_table for the columns of screen and meta.
 
 function [screen, meta] = RELAX_screen_run_score(opts)
@@ -52,10 +54,21 @@ function [m, message] = measureOneFile(cleanedPath, row, cfg, opts)
     if message == ""
         [m, message] = RELAX_screen_file_metrics(row, cfg, header.allchan, ...
                                                  string(header.RELAX.ListOfChannelsAfterRejections), opts.holeDepthLimit);
-        reasons = RELAX_screen_channel_reasons(header);
-        m.InterpolatedReasons = reasons.summary;
-        for reasonName = string(fieldnames(reasons.counts))'
-            m.("NInterpolated_" + reasonName) = reasons.counts.(reasonName);
+        blank = nanMetrics();
+        for reasonField = string(fieldnames(blank))'
+            if startsWith(reasonField, "NInterpolated_") || reasonField == "InterpolatedReasons"
+                m.(reasonField) = blank.(reasonField);
+            end
+        end
+        try
+            reasons = RELAX_screen_channel_reasons(header);
+            m.InterpolatedReasons = reasons.summary;
+            for reasonName = string(fieldnames(reasons.counts))'
+                m.("NInterpolated_" + reasonName) = reasons.counts.(reasonName);
+            end
+        catch err
+            message = strjoin([message(strlength(message) > 0), "channel reasons could not be read: " + string(err.message)], "; ");
+            warning('RELAX_screen:reasonsUnreadable', '%s: %s', row.File, err.message);
         end
     else
         m = nanMetrics();
@@ -126,7 +139,7 @@ function writeReadme(screen, meta, readmePath)
         "The muscle windows are the epochs with the highest muscle slope, the same 1 s epochs and threshold as MuscleProportion; they are shown even when no epoch is above the threshold. " + ...
         "The blink windows are the loudest remaining blinks. " + ...
         "Each muscle window shows up to 4 blink electrodes and the 2 other channels with the highest slope in that epoch; each blink window shows up to 4 blink electrodes and the 2 other channels with the most 20-80 Hz power.", ...
-        "- Each window's caption gives its start time and how loud it is: muscle windows give the start of the 1 s epoch, which lies inside the 3 s window centred on it, with the epoch's highest slope, its channel and the threshold (marked 'below threshold' when the slope is not above it); " + ...
+        "- Each window's caption gives its start time and how loud it is: muscle windows give the start of the 1 s epoch, which lies inside the 3 s window around it, with the epoch's highest slope, its channel and the threshold (marked 'below threshold' when the slope is not above it); " + ...
         "blink windows give the start of the window and the microvolts left at the blink peak, as a mean over all of the file's blink electrodes (interpolated ones left out), not only the ones drawn. " + ...
         "The scale bar in each window shows its microvolt scale, which differs from window to window. Interpolated channels are marked '(interp., <reason>)' on the axis, with the reason they were removed.", ...
         "- The blink-locked maps average every blink in the file (baseline -500 to -300 ms, 50 ms either side of the peak): before wICA, cleaned, and what was removed, " + ...

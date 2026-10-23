@@ -6,7 +6,8 @@
 % Inputs:
 %   cleanedEEG - a cleaned file with allchan and RELAX.ListOfChannelsAfterRejections, whose
 %                RELAX.Data_has_been_cleaned is 1
-%   cfg        - that participant's saved RELAX_cfg (MuscleSlopeThreshold, and LowPassFilter, taken as 80 when absent)
+%   cfg        - that participant's saved RELAX_cfg (MuscleSlopeThreshold, taken as -0.59 when absent, and
+%                LowPassFilter, taken as 80 when absent)
 %
 % Slopes come from RELAX_metrics_muscle on the channels that were not interpolated: the 7-75 Hz log-log
 % slope of each 1 s epoch, one epoch every 0.5 s, as in the cleaned file's MuscleProportion metric.
@@ -15,7 +16,7 @@
 %   slopes.labels       - [1 x c] string, the real channels
 %   slopes.values       - [c x e] slopes; empty when they cannot be computed
 %   slopes.startSeconds - [1 x e] each epoch's start in the continuous data; empty when values are
-%   slopes.threshold    - cfg.MuscleSlopeThreshold
+%   slopes.threshold    - the muscle slope threshold used
 %   slopes.note         - "" or why values is empty (a low-pass under 75 Hz, or the error from RELAX_metrics_muscle)
 
 function slopes = RELAX_screen_muscle_slopes(cleanedEEG, cfg)
@@ -23,7 +24,8 @@ function slopes = RELAX_screen_muscle_slopes(cleanedEEG, cfg)
     slopes.labels = string(cleanedEEG.RELAX.ListOfChannelsAfterRejections(:)');
     slopes.values = [];
     slopes.startSeconds = [];
-    slopes.threshold = cfg.MuscleSlopeThreshold;
+    slopes.threshold = -0.59;
+    if isfield(cfg, 'MuscleSlopeThreshold'), slopes.threshold = cfg.MuscleSlopeThreshold; end
     slopes.note = "";
 
     lowPassHz = 80;
@@ -44,6 +46,8 @@ end
 
 function [values, startSeconds] = measureSlopes(cleanedEEG, labels, cfg)
     realChannelsEEG = pop_select(cleanedEEG, 'channel', labels);
+    realChannelsEEG.icaweights = []; realChannelsEEG.icasphere = []; realChannelsEEG.icawinv = [];
+    realChannelsEEG.icaact = []; realChannelsEEG.icachansind = [];
     noAutoPool = withoutPoolAutoCreate();
     [~, epochedEEG] = RELAX_metrics_muscle(realChannelsEEG, [], cfg);
     clear noAutoPool

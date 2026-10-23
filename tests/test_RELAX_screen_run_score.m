@@ -25,7 +25,7 @@ function test_RELAX_screen_run_score()
     assert(contains(readme, "Amber filled electrodes mark the hole") && contains(readme, "NInterpolated_limit"), 'README guide describes the hole rule and the channel limit');
     assert(contains(readme, "InterpolatedReasons") && contains(readme, "NInterpolated_<reason>"), 'README explains the removal reasons');
     assert(contains(readme, "highest muscle slope") && contains(readme, "its channel and the threshold") && ~contains(readme, "20-80 Hz power as a multiple"), 'README guide describes the slope-ranked muscle windows');
-    assert(contains(readme, "lies inside the 3 s window") && contains(readme, "each blink window shows up to 4 blink electrodes"), 'README guide says what the captions time and which channels each window shows');
+    assert(contains(readme, "lies inside the 3 s window around it") && contains(readme, "each blink window shows up to 4 blink electrodes"), 'README guide says what the captions time and which channels each window shows');
     assert(contains(readme, "'(interp., <reason>)'") && contains(readme, "Interpolated for <reason>"), 'README guide describes the reasons drawn on the sheet');
     assert(contains(readme, "BlinkRatio or HoleDepth is missing"), 'README names the unscreening metrics');
     assert(~isnan(screen.BlinkRatio) || strlength(screen.SheetMessage) > 0, 'a missing BlinkRatio is explained');
@@ -36,7 +36,31 @@ function test_RELAX_screen_run_score()
     assertUnscreenedWithHeader(fixtures, screen, @writeTextFile, "");
     assertUnscreenedWithHeader(fixtures, screen, @writeHeaderWithoutAnyChannelInfo, "EEG.allchan");
     assertUnscreenedWithHeader(fixtures, screen, @writeHeaderWithoutRelaxField, "ListOfChannelsAfterRejections");
+    assertReasonsFailureKeepsOtherMetrics(fixtures, screen);
     fprintf('test_RELAX_screen_run_score: PASS\n');
+end
+
+function assertReasonsFailureKeepsOtherMetrics(fixtures, healthyScreen)
+% A pop screen whose badChannels is a struct makes RELAX_screen_channel_reasons error: the file keeps
+% its metrics, has no reasons, and the error reaches SheetMessage instead of stopping the score stage.
+    root = tempname; cleanup = onCleanup(@() rmdir(root, 's'));
+    processed = fullfile(root, 'RELAXProcessed');
+    cleanedDir = fullfile(processed, 'Cleaned_Data');
+    mkdir(cleanedDir);
+    copyfile(fullfile(fixtures, 'RELAXProcessed', 'PerParticipantStats'), fullfile(processed, 'PerParticipantStats'));
+    healthyHeader = pop_loadset('filename', 'boundary_fixture_RELAX.set', 'filepath', fullfile(fixtures, 'RELAXProcessed', 'Cleaned_Data'), 'loadmode', 'info');
+    EEG = eeg_emptyset;
+    EEG.allchan = healthyHeader.allchan;
+    EEG.RELAX = healthyHeader.RELAX;
+    EEG.RELAX.PopScreen = struct('badChannels', struct('label', 'E1'), 'badChannelReason', {{'flat'}});
+    pop_saveset(EEG, 'filename', 'boundary_fixture_RELAX.set', 'filepath', cleanedDir, 'savemode', 'onefile');
+    opts = struct('myPath', [root filesep], 'outputFolderName', 'RELAXProcessed', 'outDir', fullfile(root, 'out'), ...
+                  'cutoff', 3, 'sampleSize', 10, 'seed', 1, 'holeDepthLimit', 1.4);
+    warningState = warning('off', 'RELAX_screen:reasonsUnreadable'); restoreWarning = onCleanup(@() warning(warningState));
+    screen = RELAX_screen_run_score(opts);
+    assert(screen.InterpolatedReasons == "" && all(isnan(screen{:, "NInterpolated_" + ["impedance" "pop" "bridged" "PREP" "extreme" "muscle" "unknown"]})), 'a file whose reasons could not be read has none');
+    assert(contains(screen.SheetMessage, "channel reasons"), 'the reasons error reaches SheetMessage');
+    assert(screen.NInterpolated == healthyScreen.NInterpolated && screen.HoleDepth == healthyScreen.HoleDepth && screen.MuscleProportion == healthyScreen.MuscleProportion, 'the other metrics are kept');
 end
 
 function assertUnscreenedWithHeader(fixtures, healthyScreen, writeCleanedFile, expectedMessagePart)
