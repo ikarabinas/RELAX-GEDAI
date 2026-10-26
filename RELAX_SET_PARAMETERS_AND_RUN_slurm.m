@@ -141,7 +141,7 @@ addpath('/home/nga4004/tools/eeglab2026.0.0/plugins/Fieldtrip-lite250523/');
 % https://github.com/sccn/ICLabel
 
 % Specify  RELAX folder location (this toolbox):
-addpath('/home/nga4004/gitRepos/RELAX-GEDAI/');
+addpath('/home/nga4004/gitRepos/RELAX-GEDAI/.claude/worktrees/gentle-filters/');
 
 % GEDAI (local fork with boundary handling), used when RELAX_cfg.Run_GEDAI=1:
 % https://github.com/neil-gallagher/GEDAI-master
@@ -157,7 +157,7 @@ RELAX_cfg.caploc=[]; % path containing electrode positions. Set to =[] if electr
 
 % Specify the to be processed file locations:
 RELAX_cfg.myPath='/home/nga4004/TMS_response_variability/store/mdd_dlpfc/preprocessed_Oct26/rest_treat_joined/';
-RELAX_cfg.OutputFolderName='RELAXProcessed_broadbandGEDAI'; % output folder inside myPath
+RELAX_cfg.OutputFolderName='RELAXProcessed_gentleFilters'; % output folder inside myPath
 
 % Specify whether all data is in a single folder or data are in BIDS format
 % (each EEG file within its own separate folder):
@@ -333,7 +333,7 @@ RELAX_cfg.GEDAI_LeadfieldPath='/home/nga4004/TMS_response_variability/scratch/ee
 RELAX_cfg.GEDAI_ArtifactThreshold='auto';
 RELAX_cfg.GEDAI_BroadbandArtifactThreshold='auto-';
 RELAX_cfg.GEDAI_EpochCycles=300;
-RELAX_cfg.GEDAI_LowcutFreq=1.0;
+RELAX_cfg.GEDAI_LowcutFreq=0.5;
 RELAX_cfg.GEDAI_SlidingWindowSec=[];      % [] = one threshold fitted over the whole file
 RELAX_cfg.GEDAI_EpochENOVAThreshold=[];   % [] = no epoch rejection
 RELAX_cfg.GEDAI_ChanENOVAThreshold=[];    % [] = no channel rejection
@@ -556,9 +556,9 @@ RELAX_cfg.causal_or_acausal_filter='acausal'; % set as 'acausal' or 'causal'.
 % Acausal filters are typical, and avoid filter distortions affecting data only forwards in time, whereas causal filters are less typical, cause
 % filter distortions only forwards in time, but can protect against spurious conclusions that neural activity precedes stimuli due to filter
 % distortions being projected back from post-stimulus activity to pre-stimulus periods. See: https://doi.org/10.3389/fpsyg.2012.00233
-RELAX_cfg.HighPassFilter=1; % Sets the high pass filter. 1Hz is best for ICA decomposition if you're examining just oscillatory data, 0.25Hz has been suggested to be the highest before ERPs are adversely affected by filtering 
+RELAX_cfg.HighPassFilter=0.5; % Sets the high pass filter. 1Hz is best for ICA decomposition if you're examining just oscillatory data, 0.25Hz has been suggested to be the highest before ERPs are adversely affected by filtering 
 %(but at least two studies recently have shown better detection of experimental effects with high-pass set at 0.5Hz even for ERPs, and I find a minority of my files show drift at 0.3Hz).
-RELAX_cfg.LowPassFilter=200; % If you filter out data below 75Hz, you can't use the objective muscle detection method
+RELAX_cfg.LowPassFilter=Inf; % Inf = no low-pass (pop_resample's anti-aliasing filter sets the upper edge).  If you filter out data below 75Hz, you can't use the objective muscle detection method
 
 RELAX_cfg.NotchFilterType='ZaplinePlus'; % set as 'Butterworth' to use Butterworth filter, 'ZaplinePlus' to use ZaplinePlus, or PMnotch to use ERPLAB's stop-band Parks-McClellan Notch (requires ERPLAB to be installed). 
 % ZaplinePlus works best on data sampled at 512Hz or below, consider downsampling if above this.

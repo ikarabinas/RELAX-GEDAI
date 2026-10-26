@@ -22,7 +22,7 @@ FOLDER="${3:-RELAXProcessed_broadbandGEDAI}"
 
 mkdir -p logs
 module load matlab
-cd /home/nga4004/gitRepos/RELAX-GEDAI
+cd "$SLURM_SUBMIT_DIR"
 
 matlab -nodisplay -nosplash -batch "\
 addpath('/home/nga4004/tools/eeglab2026.0.0'); eeglab nogui; \

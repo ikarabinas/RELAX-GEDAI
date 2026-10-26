@@ -762,7 +762,13 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
         end
     end
 
-    %% Band Pass filter data: 
+    %% Band Pass filter data:
+    % LowPassFilter = Inf means no low-pass: the upper band edge is then pop_resample's
+    % anti-aliasing filter (or Nyquist without downsampling).
+    lowPassHz = RELAX_cfg.LowPassFilter; passbandType = 'bandpass';
+    if isinf(lowPassHz), lowPassHz = []; passbandType = 'highpass'; end
+    lowPassHzAux = RELAX_cfg.LowPassFilter_aux_elecs; passbandTypeAux = 'bandpass';
+    if isinf(lowPassHzAux), lowPassHzAux = []; passbandTypeAux = 'highpass'; end
     if strcmp(RELAX_cfg.LowPassFilterBeforeMWF,'no') % updated implementation, avoiding low pass filtering prior to MWF reduces chances of rank deficiencies, increasing potential values for MWF delay period 
         if strcmp(RELAX_cfg.FilterType,'Butterworth')
             EEG = RELAX_filtbutter( EEG, RELAX_cfg.HighPassFilter, [], 4, 'highpass', RELAX_cfg.causal_or_acausal_filter, RELAX_cfg.RespectBoundaries);
@@ -771,7 +777,7 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
                 if (RELAX_cfg.HighPassFilter_aux_elecs~=RELAX_cfg.HighPassFilter) || (RELAX_cfg.LowPassFilter_aux_elecs~=RELAX_cfg.LowPassFilter)
                     disp('Applying filter settings to auxilary electrodes:')
                 end
-                Non_cleaned_electrodes = RELAX_filtbutter( Non_cleaned_electrodes, RELAX_cfg.HighPassFilter_aux_elecs, RELAX_cfg.LowPassFilter_aux_elecs, 4, 'bandpass', RELAX_cfg.causal_or_acausal_filter, RELAX_cfg.RespectBoundaries);
+                Non_cleaned_electrodes = RELAX_filtbutter( Non_cleaned_electrodes, RELAX_cfg.HighPassFilter_aux_elecs, lowPassHzAux, 4, passbandTypeAux, RELAX_cfg.causal_or_acausal_filter, RELAX_cfg.RespectBoundaries);
             end
         end
         if strcmp(RELAX_cfg.FilterType,'pop_eegfiltnew')
@@ -781,28 +787,28 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
                     disp('Applying filter settings to auxilary electrodes:')
                 end
                 % However, still low pass filter the auxilary electrodes, because they are not cleaned with MWF:
-                Non_cleaned_electrodes = pop_eegfiltnew(Non_cleaned_electrodes,RELAX_cfg.HighPassFilter_aux_elecs,RELAX_cfg.LowPassFilter_aux_elecs);
+                Non_cleaned_electrodes = pop_eegfiltnew(Non_cleaned_electrodes,RELAX_cfg.HighPassFilter_aux_elecs,lowPassHzAux);
             end
         end
     end
     
     if strcmp(RELAX_cfg.LowPassFilterBeforeMWF,'yes') % original implementation, not recommended before MWF unless downsampling, as increases chances of rank deficiencies
         if strcmp(RELAX_cfg.FilterType,'Butterworth')
-            EEG = RELAX_filtbutter( EEG, RELAX_cfg.HighPassFilter, RELAX_cfg.LowPassFilter, 4, 'bandpass', RELAX_cfg.causal_or_acausal_filter, RELAX_cfg.RespectBoundaries);
+            EEG = RELAX_filtbutter( EEG, RELAX_cfg.HighPassFilter, lowPassHz, 4, passbandType, RELAX_cfg.causal_or_acausal_filter, RELAX_cfg.RespectBoundaries);
             if ~isempty(RELAX_cfg.electrodes_2_keep_but_not_clean{1})
                 if (RELAX_cfg.HighPassFilter_aux_elecs~=RELAX_cfg.HighPassFilter) || (RELAX_cfg.LowPassFilter_aux_elecs~=RELAX_cfg.LowPassFilter)
                     disp('Applying filter settings to auxilary electrodes:')
                 end
-                Non_cleaned_electrodes = RELAX_filtbutter( Non_cleaned_electrodes, RELAX_cfg.HighPassFilter_aux_elecs, RELAX_cfg.LowPassFilter_aux_elecs, 4, 'bandpass', RELAX_cfg.causal_or_acausal_filter, RELAX_cfg.RespectBoundaries);
+                Non_cleaned_electrodes = RELAX_filtbutter( Non_cleaned_electrodes, RELAX_cfg.HighPassFilter_aux_elecs, lowPassHzAux, 4, passbandTypeAux, RELAX_cfg.causal_or_acausal_filter, RELAX_cfg.RespectBoundaries);
             end
         end
         if strcmp(RELAX_cfg.FilterType,'pop_eegfiltnew')
-            EEG = pop_eegfiltnew(EEG,RELAX_cfg.HighPassFilter,RELAX_cfg.LowPassFilter_aux_elecs);
+            EEG = pop_eegfiltnew(EEG,RELAX_cfg.HighPassFilter,lowPassHz);
             if ~isempty(RELAX_cfg.electrodes_2_keep_but_not_clean{1})
                 if (RELAX_cfg.HighPassFilter_aux_elecs~=RELAX_cfg.HighPassFilter) || (RELAX_cfg.LowPassFilter_aux_elecs~=RELAX_cfg.LowPassFilter)
                     disp('Applying filter settings to auxilary electrodes:')
                 end
-                Non_cleaned_electrodes = pop_eegfiltnew(Non_cleaned_electrodes,RELAX_cfg.HighPassFilter_aux_elecs,RELAX_cfg.LowPassFilter_aux_elecs);
+                Non_cleaned_electrodes = pop_eegfiltnew(Non_cleaned_electrodes,RELAX_cfg.HighPassFilter_aux_elecs,lowPassHzAux);
             end
         end
     end
@@ -1208,7 +1214,7 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     % v2.0.1 NWB 8/8/2025 - moved the low pass filtering after the MWF
     % steps to before the extreme bad period rejection steps to ensure
     % filtering is not adversely affected by boundary elements.
-    if strcmp(RELAX_cfg.LowPassFilterBeforeMWF,'no') % if low pass filtering wasn't applied before MWF cleaning (recommended) apply it here
+    if strcmp(RELAX_cfg.LowPassFilterBeforeMWF,'no') && ~isinf(RELAX_cfg.LowPassFilter) % if low pass filtering wasn't applied before MWF cleaning (recommended) apply it here
         if strcmp(RELAX_cfg.FilterType,'Butterworth')
             EEG = RELAX_filtbutter( EEG, [], RELAX_cfg.LowPassFilter, 4, 'lowpass', RELAX_cfg.causal_or_acausal_filter, RELAX_cfg.RespectBoundaries);
         end
