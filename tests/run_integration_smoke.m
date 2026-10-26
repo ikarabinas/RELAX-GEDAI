@@ -1,6 +1,11 @@
-function run_integration_smoke()
+function run_integration_smoke(rejectMuscleChannelsAfterCleaning)
 % Run RELAX_Wrapper_slurm end to end on the cropped fixture and assert the
 % boundary-related outcomes. Validates plumbing, not cleaning quality.
+% run_integration_smoke(1) runs the deferred muscle-channel screen instead, into
+% fixtures/RELAXProcessed_deferredMuscle, leaving the default run's outputs (which the
+% residual-screen tests read) alone.
+
+    if nargin < 1, rejectMuscleChannelsAfterCleaning = 0; end
 
     fixtureDir = fullfile(fileparts(mfilename('fullpath')), 'fixtures');
     % Same vendored-path setup the SET_PARAMETERS entry point does after eeglab():
@@ -88,6 +93,11 @@ function run_integration_smoke()
     RELAX_cfg.MuscleSlopeThreshold = -0.31;
     RELAX_cfg.MaxProportionOfDataCanBeMarkedAsMuscle = 0.50;
     RELAX_cfg.ProportionOfMuscleContaminatedEpochsAboveWhichToRejectChannel = 0.50;
+    RELAX_cfg.RejectMuscleChannelsAfterCleaning = rejectMuscleChannelsAfterCleaning;
+    RELAX_cfg.OutputFolderName = 'RELAXProcessed';
+    if rejectMuscleChannelsAfterCleaning == 1
+        RELAX_cfg.OutputFolderName = 'RELAXProcessed_deferredMuscle';
+    end
     RELAX_cfg.ProportionOfExtremeNoiseAboveWhichToRejectChannel = 0.25;
     RELAX_cfg.MaxProportionOfElectrodesThatCanBeDeleted = 0.25;
     RELAX_cfg.InterpolateRejectedElectrodesAfterCleaning = 'yes';
@@ -99,12 +109,21 @@ function run_integration_smoke()
     RELAX_Wrapper_slurm(RELAX_cfg);
 
     % --- Assertions on the output --------------------------------------------------
-    cleanedDir = fullfile(fixtureDir, 'RELAXProcessed', 'Cleaned_Data');
+    cleanedDir = fullfile(fixtureDir, RELAX_cfg.OutputFolderName, 'Cleaned_Data');
     cleaned = dir(fullfile(cleanedDir, '*RELAX*.set'));
     assert(~isempty(cleaned), 'no cleaned file was written to %s', cleanedDir);
 
     assert_smoke_outcome(fullfile(cleanedDir, cleaned(1).name), ...
                          fullfile(fixtureDir, 'boundary_fixture.set'));
+
+    cleanedHeader = pop_loadset('filename', cleaned(1).name, 'filepath', cleanedDir, 'loadmode', 'info');
+    rejections = cleanedHeader.RELAXProcessingExtremeRejections;
+    assert(rejections.RejectMuscleChannelsAfterCleaning == rejectMuscleChannelsAfterCleaning, ...
+        'muscle screen placement not recorded');
+    assert(~any(ismember(string(rejections.MuscleBasedElectrodesToReject), ...
+        string(cleanedHeader.RELAX.ListOfChannelsAfterRejections))), ...
+        'a channel rejected by the muscle screen is still listed as kept');
+    assert(cleanedHeader.nbchan == numel(cleanedHeader.allchan), 'rejected channels were not interpolated back');
 
     fprintf('run_integration_smoke: PASS\n');
 end

@@ -875,15 +875,33 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
 
     continuousEEG=EEG;
 
+    % With RejectMuscleChannelsAfterCleaning=1 the muscle-contaminated channels stay in
+    % through ICA and GEDAI, which see their muscle sources most clearly, and the muscle
+    % screen reruns on the cleaned data after GEDAI instead.
+    if ~isfield(RELAX_cfg,'RejectMuscleChannelsAfterCleaning'); RELAX_cfg.RejectMuscleChannelsAfterCleaning = 0; end
+    EpochingCfg = RELAX_cfg;
+    if RELAX_cfg.RejectMuscleChannelsAfterCleaning==1
+        EpochingCfg.ProportionOfMuscleContaminatedEpochsAboveWhichToRejectChannel = 1; % the epoching stage's documented off switch for its muscle screen
+    end
+
     if RELAX_cfg.RespectBoundaries==1
         % Boundary-aware variant: epochs are tiled within each inter-boundary segment
         % (via RELAX_get_segments) instead of on a fixed grid across the whole
         % recording, so data adjacent to a 'boundary' event is still evaluated rather
         % than left un-epoched (NaN) and later swept into ExtremelyBadPeriodsForDeletion
         % regardless of whether it's actually extreme.
-        [continuousEEG, epochedEEG] = RELAX_excluding_channels_and_epoching_boundary(continuousEEG, RELAX_cfg); % Epoch data, detect extremely bad data, delete channels if over the set threshold for proportion of data affected by extreme outlier for each electrode
+        [continuousEEG, epochedEEG] = RELAX_excluding_channels_and_epoching_boundary(continuousEEG, EpochingCfg); % Epoch data, detect extremely bad data, delete channels if over the set threshold for proportion of data affected by extreme outlier for each electrode
     else
-        [continuousEEG, epochedEEG] = RELAX_excluding_channels_and_epoching(continuousEEG, RELAX_cfg); % Epoch data, detect extremely bad data, delete channels if over the set threshold for proportion of data affected by extreme outlier for each electrode
+        [continuousEEG, epochedEEG] = RELAX_excluding_channels_and_epoching(continuousEEG, EpochingCfg); % Epoch data, detect extremely bad data, delete channels if over the set threshold for proportion of data affected by extreme outlier for each electrode
+    end
+    % How many channels the muscle screen finds over threshold on the uncleaned data, kept
+    % even when the screen is deferred so the two placements can be compared per file.
+    % NaN when the budget was already spent and the screen never measured them.
+    NumberOfMuscleContaminatedChannelsBeforeCleaning = NaN;
+    if isfield(epochedEEG.RELAXProcessing.Details, 'ProportionOfEpochsShowingMuscleAboveThresholdPerChannel')
+        NumberOfMuscleContaminatedChannelsBeforeCleaning = sum( ...
+            epochedEEG.RELAXProcessing.Details.ProportionOfEpochsShowingMuscleAboveThresholdPerChannel ...
+            > RELAX_cfg.ProportionOfMuscleContaminatedEpochsAboveWhichToRejectChannel);
     end
     [continuousEEG, epochedEEG] = RELAX_excluding_extreme_values(continuousEEG, epochedEEG, RELAX_cfg); % Mark extreme periods for exclusion from MWF cleaning, and deletion before wICA cleaning
 
@@ -906,9 +924,17 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     % PREP bad-channel rejection (RELAX_cfg.Perform_PREP_bad_channel_rejection=0, see
     % above) is visible in the aggregated per-participant table, not just in stdout.
     epochedEEG.RELAXProcessingExtremeRejections.RetainedChannelCount = epochedEEG.nbchan;
+    % On both, because the saved file's header carries continuousEEG's copy and the
+    % aggregate table epochedEEG's:
+    continuousEEG.RELAXProcessingExtremeRejections.RejectMuscleChannelsAfterCleaning = RELAX_cfg.RejectMuscleChannelsAfterCleaning;
+    continuousEEG.RELAXProcessingExtremeRejections.NumberOfMuscleContaminatedChannelsBeforeCleaning = NumberOfMuscleContaminatedChannelsBeforeCleaning;
+    epochedEEG.RELAXProcessingExtremeRejections.RejectMuscleChannelsAfterCleaning = RELAX_cfg.RejectMuscleChannelsAfterCleaning;
+    epochedEEG.RELAXProcessingExtremeRejections.NumberOfMuscleContaminatedChannelsBeforeCleaning = NumberOfMuscleContaminatedChannelsBeforeCleaning;
 
-    % Record extreme artifact rejection details for all participants in single table:
-    ExtremeRejectionsRow = struct2table(epochedEEG.RELAXProcessingExtremeRejections,'AsArray',true);
+    % Record extreme artifact rejection details for all participants in single table
+    % (rewritten after cleaning if the muscle screen was deferred):
+    ExtremeRejections = epochedEEG.RELAXProcessingExtremeRejections;
+    ExtremeRejectionsRow = struct2table(ExtremeRejections,'AsArray',true);
     % Via RELAX_append_table_row, because a table checkpointed by an earlier version of
     % this wrapper can be missing columns this version writes
     % (ImpedanceBasedChannelToReject was added after some runs had already been
@@ -1313,6 +1339,37 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
         nBoundaries_postGEDAI = sum(isBoundary(EEG.event));
         assert(nBoundaries_postGEDAI == nBoundaries_preGEDAI, ...
             'Boundary count changed during GEDAI denoising: %d before, %d after.', nBoundaries_preGEDAI, nBoundaries_postGEDAI);
+    end
+
+    %% Deferred muscle channel screen, on the cleaned data:
+    % Same slope threshold, proportion threshold and shared budget as the epoching stage's
+    % screen. Rejected channels are interpolated back with the rest below, and are left out
+    % of the cleaned metrics like any other rejected channel.
+    if RELAX_cfg.RejectMuscleChannelsAfterCleaning==1
+        [MuscleScreenEEG, ~] = RELAX_metrics_muscle(EEG, [], RELAX_cfg);
+        MuscleProportions = MuscleScreenEEG.RELAX_Metrics.Cleaned.ProportionOfEpochsShowingMuscleAboveThresholdPerChannel;
+        clear MuscleScreenEEG
+        UnspentChannelBudget = floor(RELAX_cfg.MaxProportionOfElectrodesThatCanBeDeleted*numel(EEG.allchan)) ...
+            - (numel(EEG.allchan) - EEG.nbchan);
+        MuscleBasedElectrodesToReject = RELAX_muscle_channels_to_reject({EEG.chanlocs.labels}, MuscleProportions, ...
+            RELAX_cfg.ProportionOfMuscleContaminatedEpochsAboveWhichToRejectChannel, UnspentChannelBudget);
+        if ~isempty(MuscleBasedElectrodesToReject)
+            fprintf('Rejecting %d muscle-contaminated channel(s) after cleaning: %s\n', ...
+                numel(MuscleBasedElectrodesToReject), strjoin(MuscleBasedElectrodesToReject, ', '));
+            EEG = pop_select(EEG, 'nochannel', MuscleBasedElectrodesToReject);
+        end
+        EEG.RELAX.ListOfChannelsAfterRejections = {EEG.chanlocs.labels};
+        EEG.RELAX.NumberOfElectrodesAfterRejections = EEG.nbchan;
+
+        MuscleScreenResult.MuscleBasedElectrodesToReject = MuscleBasedElectrodesToReject'; % a column, as the epoching stage stores it
+        MuscleScreenResult.NumberOfMuscleContaminatedChannelsRecomendedToDelete = ...
+            sum(MuscleProportions > RELAX_cfg.ProportionOfMuscleContaminatedEpochsAboveWhichToRejectChannel);
+        for MuscleField = fieldnames(MuscleScreenResult)'
+            EEG.RELAXProcessingExtremeRejections.(MuscleField{1}) = MuscleScreenResult.(MuscleField{1});
+            ExtremeRejections.(MuscleField{1}) = MuscleScreenResult.(MuscleField{1});
+        end
+        RELAXProcessingExtremeRejectionsAllParticipants = RELAX_append_table_row( ...
+            RELAXProcessingExtremeRejectionsAllParticipants, FileNumber, struct2table(ExtremeRejections,'AsArray',true));
     end
       
     %% COMPUTE CLEANED METRICS:

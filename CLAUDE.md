@@ -109,6 +109,13 @@ Stage order:
    segment independently instead of on a fixed grid, so boundary-adjacent data is evaluated rather
    than structurally excluded; see "Boundary/discontinuity handling" below) then
    `RELAX_excluding_extreme_values.m`; blink detection via `RELAX_blinks_IQR_method.m`.
+   In `RELAX_Wrapper_slurm.m`, `RELAX_cfg.RejectMuscleChannelsAfterCleaning=1` switches the epoching
+   stage's muscle-channel screen off and reruns it after GEDAI (or after ICA when GEDAI is off) on the
+   cleaned data, with the same thresholds and the shared budget (`RELAX_muscle_channels_to_reject.m`),
+   so muscle-dominated electrodes are available to ICA and GEDAI. Covariates:
+   `RejectMuscleChannelsAfterCleaning` and `NumberOfMuscleContaminatedChannelsBeforeCleaning` on
+   `RELAXProcessingExtremeRejections`, where `NumberOfMuscleContaminatedChannelsRecomendedToDelete` then
+   counts the cleaned data. Comparison tooling: `muscle_deferral_comparison/`.
 6. **Artifact-type marking** — `RELAX_muscle.m`, `RELAX_horizontaleye.m`, `RELAX_drift.m` build masks
    of artifact vs. clean data (padded via `RELAX_pad_brief_mask_periods.m`) used both for the MWF
    cleaning template and for post-hoc SER/ARR (signal-to-error/artifact-to-residue ratio) metrics.
