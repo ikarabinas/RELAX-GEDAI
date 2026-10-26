@@ -165,3 +165,74 @@ twice on one channel with different z (m583 candidates 32/33 and 34/35).
 | `RefPop_MinSignAgreement` | 0.9 | sits in the gap between the two populations; `m159_cand05` (0.88 / 0.28, a genuine −62 µV step on ~170 channels) is the one visible casualty, so 0.85 is defensible too |
 | `RefPop_MaxAmplitudeSpread` | 0.5 | same; no rejected-class point lies below it with agree ≥ 0.9 except 2 on m583 |
 | `MaxPlateauDriftFraction` for the reference detector | finite (0.5 proposed) | recommendation 2 above; not in the original plan |
+
+## After subtraction (Task 7, 2026-09-22)
+
+**Run:** `run_survey_reference_pops.sh` → job **19844528** (19 min,
+`logs/refpop_survey_19844528.log`), output `reference_pop_survey_task7.mat` (untracked),
+figures in `reference_pop_survey/task7/`. The subtraction arm now does exactly what
+`RELAX_Wrapper_slurm.m` does: `RELAX_detect_reference_pops` with the uniformity gate on
+(0.9 / 0.5), floor 10 µV, `MaxPlateauDriftFraction 0.3`, `HoldMs 500`,
+`MaxHoldDriftFraction Inf` (the level-hold gate was surveyed and not switched on —
+`2026-09-21-hold-drift-survey.md`), overlapping candidates merged, then
+`RELAX_subtract_reference_pops` with the detector's own median trace and `WindowMs 150`;
+afterwards both detectors run again on the corrected data. Per-site diagnostics:
+`reference_pop_survey/task7/residuals.m` (job 19845189) and `still_cm.m` (job 19845212).
+
+| file | subtracted (merged) | residual gated | common-mode events before → after | at subtracted sites still common-mode | per-channel steps before → after |
+|---|---|---|---|---|---|
+| m159 | 2 (0) | 0 ✅ | 67 → 67 ✅ | 0 ✅ | 8790 → 8786 ✅ |
+| m497 | 7 (2) | **1** ❌ | 186 → 183 ✅ | **1** ❌ | 22 334 → 22 039 ✅ |
+| m208 | 18 (3) | **1** ❌ | 51 → 40 ✅ | **6** ❌ | 8252 → 6355 ✅ (−23 %) |
+| m583 | 11 (1) | 0 ✅ | 177 → 173 ✅ | 0 ✅ | 21 755 → 21 275 ✅ |
+| m155 | 0 | 0 ✅ | 0 → 0 ✅ | 0 ✅ | 1199 → 1199 ✅ |
+
+Nothing got worse anywhere: no file gained common-mode events or per-channel steps, and
+m208 — the file with the most reference pops — lost a quarter of its per-channel steps and
+11 of 51 common-mode events. Two of the four criteria fail on two files, for two reasons
+that the per-site diagnostic makes specific:
+
+**The residual gated candidates are the slow-wave flanks, re-bracketed.** m497's is at
+664.74 s (−28 µV), between the subtracted 664.55 and 664.91 s treads of the flank the
+first survey flagged; m208's is at 260.96 s (−85 µV), where the plateau gate had correctly
+rejected candidate 17 (plateau 0.43) and subtracting the 259.74 / 260.63 s treads left a
+remainder that brackets with plateau 0.23. Subtracting "steps" off a wave leaves more wave.
+Neither is a pop the stage missed; both are the known residual of gating on 150 ms windows.
+
+**Sites that stay common-mode are the ones whose per-channel amplitudes were never
+uniform.** From `still_cm.m` (per-channel common-mode event overlapping each subtracted
+step, before → after):
+
+| m208 site | amplitude | spread | before | after |
+|---|---|---|---|---|
+| 222.40 / 222.73 s | −231 / +215 µV | 0.20 / 0.46 | 1 ev, 188 ch, median \|amp\| 248 | 1 ev, 93 ch, median 245 |
+| 227.51 s | −233 | 0.40 | 176 ch, 269 | 67 ch, 162 |
+| 281.40 s | −95 | 0.38 | 99 ch, 77 | 50 ch, 122 |
+| 288.52 s | −301 | 0.25 | 180 ch, 310 | 48 ch, 244 |
+| 720.73 s | −193 | 0.32 | 68 ch, 153 | 73 ch, 155 (slow-wave flank) |
+| the other 12 sites | | 0.02–0.44 | 46–195 ch | **none** |
+| m497 868.41 s | −44 | 0.48 | 155 ch, 75 (one channel at 94 mV) | 217 ch, 71 |
+
+Every site with spread ≤ 0.19 is gone after subtraction, and so are several with spread
+0.3–0.44 (719.92, 720.42, 855.31 s). What remains is where a large fraction of channels
+carried a step of a very different size from the median — the pair at 222 s keeps a
+245 µV median step on 93 channels after a 231 µV subtraction, i.e. those channels had
+roughly twice the reference amplitude. That is not a reference pop in the sense of the
+design (identical on every channel); it passes the 0.5 spread gate because the gate is an
+IQR-type measure and the distribution is wide rather than shifted. On those sites the
+per-channel stage still sees a common-mode event and excises it, exactly as it did before
+the subtraction — with fewer channels involved.
+
+**Verdict on the plan's criteria:** not met on m497 and m208
+(`nResidualGated`, `nSubtractedStillCommonMode`). Per Task 7 step 3,
+`Perform_reference_pop_repair` stays **0** and the decision is the user's. The evidence
+for switching on anyway: the subtraction removed 11 of 18 m208 sites and all 7 uniform
+m497 sites completely, reduced common-mode events and per-channel steps on every file that
+had reference pops, and left the remaining sites to the per-channel excision that already
+handled them. The evidence for holding: the residuals are a real class (wide-spread
+"reference" events and slow-wave flanks) that a one-pass subtraction turns from one clean
+excision into a subtraction plus a smaller excision, and nobody has yet looked at what the
+corrected data look like at those sites at the ICA stage. Two knobs would shrink the
+residual class before a second look: `RefPop_MaxAmplitudeSpread` 0.5 → ~0.25 (loses
+719.92 / 720.42 / 855.31 s on m208, which subtracted cleanly, so it is a trade), and a
+merged-event test for slow waves (see the hold-drift survey's closing paragraph).

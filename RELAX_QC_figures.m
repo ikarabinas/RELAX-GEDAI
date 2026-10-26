@@ -8,13 +8,14 @@
 %   >> RELAX_QC_figures('drawMatched') % redraw from the cache, only for files also cleaned in comparisonFolderName
 %   >> RELAX_QC_figures('all')       % both
 %   >> RELAX_QC_figures('extract', {'m144_dlpfc_day1_stitched'})   % trial on a few files
+%   >> RELAX_QC_figures('all', {}, 'RELAXProcessed_muscleAfter')   % another run's output folder, with automatic Figure 1 examples
 %
 % Edit myPath and overrides below for a different dataset or hand-picked examples.
 
-function RELAX_QC_figures(stage, onlyFiles)
+function RELAX_QC_figures(stage, onlyFiles, outputFolderName)
 
     myPath = '/home/nga4004/TMS_response_variability/store/mdd_dlpfc/preprocessed_Oct26/rest_treat_joined/';
-    outputFolderName = 'RELAXProcessed_broadbandGEDAI'; % the RELAX_cfg.OutputFolderName of the run being plotted
+    if nargin < 3, outputFolderName = 'RELAXProcessed_broadbandGEDAI'; end % the RELAX_cfg.OutputFolderName of the run being plotted
     comparisonFolderName = 'RELAXProcessed'; % the 'drawMatched' stage keeps only files cleaned in this run too
     % Hand-picked Figure 1 examples, replacing the automatic choice when non-empty, e.g.
     %   struct('file', {'m144_dlpfc_day1_stitched'}, 'kind', {'blink'}, 'centreSeconds', {412.3})
@@ -31,6 +32,7 @@ function RELAX_QC_figures(stage, onlyFiles)
 
     if nargin < 1, stage = 'all'; end
     if nargin < 2, onlyFiles = {}; end
+    if ~strcmp(outputFolderName, 'RELAXProcessed_broadbandGEDAI'), overrides = overrides([]); end % the pinned files are not all in other runs
 
     outDir = fullfile(myPath, outputFolderName, 'QC_figures');
     if ~isfolder(outDir), mkdir(outDir); end

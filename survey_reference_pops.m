@@ -19,14 +19,17 @@ function results = survey_reference_pops(outFile, opts)
 %      signAgreement over all files for reference candidates and unmatched common-mode
 %      events.
 %   5. If RELAX_subtract_reference_pops exists on the path (Task 5 of the plan), the
-%      subtraction arm: apply it with the gated candidates at the first floor, re-run the
+%      subtraction arm: run the reference detector exactly as RELAX_Wrapper_slurm does
+%      (uniformity gate on, overlapping candidates merged, first floor), subtract, re-run the
 %      reference detector and the per-channel detector on the corrected data, and report
 %      residual reference candidates and common-mode events before/after.
 %
 % Run on a compute node only: sbatch run_survey_reference_pops.sh
 %
 % opts (optional): .dataDir, .files, .montageFile, .floors ([30 10]), .maxFigures (6),
-%   .figDir, .commonModeFraction (0.15), .slackMs (50), .subtract (true).
+%   .figDir, .commonModeFraction (0.15), .slackMs (50), .subtract (true), .detectOpts (the
+%   pre-2026-09-23 operating point below; pass RELAX_Wrapper_slurm's shipped PopDetect_*
+%   'Detect' list, minus MinAmplitudeMicrovolts, to measure the production point instead).
 
     if nargin < 1 || isempty(outFile); outFile = 'reference_pop_survey.mat'; end
     if nargin < 2; opts = struct(); end
@@ -34,19 +37,20 @@ function results = survey_reference_pops(outFile, opts)
     opts = setDefault(opts, 'files', {'m159_dlpfc_day1_stitched.set', 'm497_dlpfc_day1_stitched.set', ...
         'm208_dlpfc_day1_stitched.set', 'm583_dlpfc_day1_stitched.set', 'm155_dlpfc_day1_stitched.set'});
     opts = setDefault(opts, 'montageFile', '/home/nga4004/TMS_response_variability/montage_204_egi_indices.txt');
-    opts = setDefault(opts, 'floors', [30 10]);
+    opts = setDefault(opts, 'floors', [10 30]);
     opts = setDefault(opts, 'maxFigures', 6);
     opts = setDefault(opts, 'figDir', fullfile('docs', 'superpowers', 'reports', 'reference_pop_survey'));
     opts = setDefault(opts, 'commonModeFraction', 0.15);
     opts = setDefault(opts, 'slackMs', 50);
     opts = setDefault(opts, 'subtract', true);
+    opts = setDefault(opts, 'detectOpts', {'WindowMs', 150, 'TransitionMs', 100, 'ZThreshold', 4, ...
+        'ChannelZThreshold', 4, 'RefractoryMs', 20});
     if ~exist(opts.figDir, 'dir'); mkdir(opts.figDir); end
 
     eeglab nogui;
     RELAX_add_vendored_noisetools();
     electrodesToDelete = montageDeletions(opts.montageFile);
-    detectOpts = {'WindowMs', 150, 'TransitionMs', 100, 'ZThreshold', 4, 'ChannelZThreshold', 4, ...
-                  'RefractoryMs', 20, 'MaxTransitionMs', 300, 'MaxPlateauDriftFraction', Inf};
+    detectOpts = opts.detectOpts;
     canSubtract = opts.subtract && exist('RELAX_subtract_reference_pops', 'file') == 2;
 
     results = {};
@@ -71,7 +75,9 @@ function results = survey_reference_pops(outFile, opts)
             r.ref{f}.refTrace = single(info.refChannel.data);
             r.ref{f}.gated = info.candidates.signAgreement >= 0.9 & info.candidates.amplitudeSpread <= 0.5;
             % gate off -> every candidate accepted -> this holds all of them, for the figures
-            r.ref{f}.perChannelAmplitudeAll = single(info.perChannelAmplitude);
+            % (per-candidate, not info.perChannelAmplitude, which is post-merge and can have
+            % fewer columns than there are candidates once overlapping ones collapse)
+            r.ref{f}.perChannelAmplitudeAll = single(info.candidates.perChannelAmplitude);
             fprintf(['Reference channel (floor %g uV): %d usable channels, robust sd %.2f uV (channels %.2f); ' ...
                      '%d candidate(s) in %.1f min, %d pass the 0.9/0.5 gate; %.1f s\n'], opts.floors(f), ...
                 info.channelInfo.nChannelsUsed, info.channelInfo.robustSd, info.channelInfo.medianChannelRobustSd, ...
@@ -184,22 +190,23 @@ function summaryFigure(results, path)
     print(fig, path, '-dpng', '-r90'); close(fig);
 end
 
-function S = subtractionArm(EEG, R, detectOpts, opts, slack)
-    c = R.candidates; keep = R.gated;
-    refSteps = structfun(@(f) f(keep), rmfield(c, 'accepted'), 'UniformOutput', false);
-    [EEG2, sinfo] = RELAX_subtract_reference_pops(EEG, refSteps, double(R.refTrace));
+function S = subtractionArm(EEG, ~, detectOpts, opts, slack)
+    [refSteps, production] = RELAX_detect_reference_pops(EEG, ...
+        'Detect', [detectOpts, {'MinAmplitudeMicrovolts', opts.floors(1)}]);
+    [EEG2, sinfo] = RELAX_subtract_reference_pops(EEG, refSteps, production.refChannel.data, 'WindowMs', 150);
     [~, after] = RELAX_detect_reference_pops(EEG2, 'MinSignAgreement', 0, 'MaxAmplitudeSpread', Inf, ...
         'Detect', [detectOpts, {'MinAmplitudeMicrovolts', opts.floors(1)}]);
     [~, pAfter] = RELAX_detect_steps(EEG2, detectOpts{:}, 'MinAmplitudeMicrovolts', 30, ...
         'CommonModeChannelFraction', opts.commonModeFraction);
     cm = pAfter.events.commonMode;
     [stillThere, ~] = RELAX_match_intervals(refSteps.onset, refSteps.offset, pAfter.events.lo(cm), pAfter.events.hi(cm), slack);
-    S = struct('info', sinfo, 'nSubtracted', numel(refSteps.sample), ...
+    S = struct('info', sinfo, 'nSubtracted', numel(refSteps.sample), 'nMerged', production.nMerged, ...
+               'subtractedSteps', refSteps, ...
                'residualCandidates', after.candidates, 'nResidualGated', sum(after.candidates.signAgreement >= 0.9 & after.candidates.amplitudeSpread <= 0.5), ...
                'nCommonModeBefore', NaN, 'nCommonModeAfter', pAfter.nCommonModeEvents, ...
                'nStepsAfter', pAfter.nSteps, 'nSubtractedStillCommonMode', sum(stillThere));
-    fprintf('Subtraction: %d reference pop(s) removed on %d channel(s); afterwards %d reference candidate(s) (%d gated), %d common-mode event(s) (%d at subtracted sites), %d per-channel steps\n', ...
-        S.nSubtracted, sinfo.nChannelsCorrected, numel(after.candidates.sample), S.nResidualGated, ...
+    fprintf('Subtraction: %d reference pop(s) (%d merged) removed on %d channel(s); afterwards %d reference candidate(s) (%d gated), %d common-mode event(s) (%d at subtracted sites), %d per-channel steps\n', ...
+        S.nSubtracted, S.nMerged, sinfo.nChannelsCorrected, numel(after.candidates.sample), S.nResidualGated, ...
         S.nCommonModeAfter, S.nSubtractedStillCommonMode, S.nStepsAfter);
 end
 
@@ -212,8 +219,10 @@ function printSummary(results)
             r.perChannel.nCommonModeEvents, sum(r.match.commonModeHasRef), ...
             median(c.signAgreement(g)), median(c.amplitudeSpread(g)));
         if isfield(r, 'subtract')
-            fprintf('%-32s   after subtraction: %d residual candidate(s), %d common-mode event(s)\n', '', ...
-                numel(r.subtract.residualCandidates.sample), r.subtract.nCommonModeAfter);
+            fprintf('%-32s   after subtracting %d: %d residual candidate(s) (%d gated), common-mode events %d -> %d (%d at subtracted sites), per-channel steps %d -> %d\n', '', ...
+                r.subtract.nSubtracted, numel(r.subtract.residualCandidates.sample), r.subtract.nResidualGated, ...
+                r.subtract.nCommonModeBefore, r.subtract.nCommonModeAfter, r.subtract.nSubtractedStillCommonMode, ...
+                r.perChannel.nSteps, r.subtract.nStepsAfter);
         end
     end
 end

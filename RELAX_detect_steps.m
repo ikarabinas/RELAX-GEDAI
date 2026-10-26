@@ -28,7 +28,7 @@
 %           locally-quiet samples, scaled to Gaussian sd units) > ChannelZThreshold. Both the
 %           local spread s(t) and the channel spread are the q-quantile of |deviation| divided
 %           by the Gaussian quantile at q (q = 0.5 reduces to the familiar 1.4826 * MAD); a high
-%           q (default 0.85) is used because at short TransitionMs lags two neighbouring centred
+%           q (default 0.95) is used because at short TransitionMs lags two neighbouring centred
 %           medians are equal whenever the entering and leaving samples fall on the same side of
 %           the median, so most of Dslope is exactly 0 and its MAD collapses to (near) zero.
 %           A random-walk drift (sweat, an electrode drying out) makes a
@@ -52,15 +52,15 @@
 % Inputs:
 %   EEG - EEGLAB EEG structure (uses .data, .nbchan, .pnts, .srate, .chanlocs, .event)
 %   Name-value pairs (all optional):
-%     WindowMs             - W, level window either side (default 151; forced to an odd
+%     WindowMs             - W, level window either side (default 101; forced to an odd
 %                             sample count: an even movmedian window averages its two
 %                             middle samples and splits an edge into two half-steps)
 %     TransitionMs         - the exact lag of Dslope in samples (min 1), split floor/ceil
-%                             either side of t (default 4). 1 is the uncentred difference
+%                             either side of t (default 6). 1 is the uncentred difference
 %                             mc(t+1) - mc(t) with adjacent level windows.
-%     ZThreshold           - local z threshold (default 20, the 2026-09-23 slope-gate survey;
-%                             see docs/superpowers/reports/2026-09-23-slope-gate-survey.md, section 6)
-%     ChannelZThreshold    - channel-wide z threshold (default 35, same survey)
+%     ZThreshold           - local z threshold (default 10, chosen 2026-10-01 from the q = 0.95 grid scored
+%                             against the v3 blind sample; see slope_gate_survey/v3_floor1.csv)
+%     ChannelZThreshold    - channel-wide z threshold (default 20, same grid)
 %     MinAmplitudeMicrovolts - absolute floor on the level change (default 15)
 %     RefractoryMs         - same-sign candidate runs separated by less than this are one
 %                             step (default 10). Gap closing only; it is NOT a minimum
@@ -72,7 +72,8 @@
 %     RefineTransition     - true (default) brackets the transition as described above: the
 %                             run's strongest sample is the starting midpoint (the run is a
 %                             plateau of the gate statistic, so its geometric centre does not
-%                             locate the edge), and a walk that never settles falls back to the
+%                             locate the edge), the initial pre/post levels are the windows of the
+%                             run's first and last samples, and a walk that never settles falls back to the
 %                             run's own end rather than rejecting. The only rejections left are
 %                             a re-measured level change under MinAmplitudeMicrovolts and a
 %                             bracket too close to a segment edge to re-measure (info.nRejected;
@@ -96,16 +97,19 @@
 %                             events of 30+).
 %     SlopeBaselineMs      - length of the local window used to estimate Dslope's own trend
 %                             (signed median) and spread (robust sd), which a candidate is
-%                             scored as a departure from (default 1000; forced odd)
+%                             scored as a departure from (default 500; forced odd)
 %     SlopeNoiseFloorMicrovolts - floor on the local trend's robust spread, so z does not blow
-%                             up where the channel is dead quiet (default 0.1)
+%                             up where the channel is dead quiet (default 1; floors 2-8 cost recall in the v3 scoring)
 %     SlopeSpreadQuantile  - the local spread s(t) and the channel scale are the q-quantile of
 %                             |deviation| divided by the Gaussian quantile at q, so they stay in
-%                             sd units; q = 0.5 is exactly 1.4826 * MAD (default 0.85). A high q
+%                             sd units; q = 0.5 is exactly 1.4826 * MAD (default 0.95). A high q
 %                             is needed because at short TransitionMs lags most of Dslope is
 %                             exactly 0 (two neighbouring centred medians agree whenever the
 %                             entering and leaving samples fall on the same side of the median),
 %                             which collapses the MAD (q = 0.5) to (near) zero
+%     SlopeExcludeMs       - the local spread s(t) ignores this many ms centred on t (default 150;
+%                             forced odd in samples), so a pop's own slope does not inflate the
+%                             scale it is scored against. 0 excludes only t itself
 %     ThresholdPairs       - N x 2 matrix of [ZThreshold ChannelZThreshold] rows (default [],
 %                             meaning use the ZThreshold/ChannelZThreshold options above).
 %                             When given, the per-channel statistics that do not depend on the
@@ -177,7 +181,7 @@
 % samples): Dslope, taken across only the TransitionMs lag, sees a fraction L/T of the rise's
 % full amplitude. A slow rise also masks itself: once it fills more than (1 - q) of the
 % SlopeBaselineMs window, its own slope inflates the local spread s it is scored against. At
-% the defaults (1000 ms, q 0.85) a linear rise of ~150 ms or longer is not found at any
+% the q 0.99 grid (1000 ms baseline) a linear rise of ~150 ms or longer is not found at any
 % amplitude (final review, 2026-09-25: 100-125 ms ramps found, 150-500 ms never, at 200 and
 % 1000 uV). That limit is set by SlopeBaselineMs and SlopeSpreadQuantile, not by TransitionMs.
 %
@@ -190,10 +194,10 @@
 function [steps, info] = RELAX_detect_steps(EEG, varargin)
 
     p = inputParser;
-    p.addParameter('WindowMs', 151);
-    p.addParameter('TransitionMs', 4);
-    p.addParameter('ZThreshold', 20);
-    p.addParameter('ChannelZThreshold', 35);
+    p.addParameter('WindowMs', 101);
+    p.addParameter('TransitionMs', 6);
+    p.addParameter('ZThreshold', 10);
+    p.addParameter('ChannelZThreshold', 20);
     p.addParameter('MinAmplitudeMicrovolts', 15);
     p.addParameter('RefractoryMs', 10);
     p.addParameter('SmoothMs', 11);
@@ -204,9 +208,10 @@ function [steps, info] = RELAX_detect_steps(EEG, varargin)
     p.addParameter('MaxTransitionFractionToRejectChannel', 0.02);
     p.addParameter('CommonModeGapMs', 10);
     p.addParameter('CommonModeChannelFraction', 0.15);
-    p.addParameter('SlopeBaselineMs', 1000);
-    p.addParameter('SlopeNoiseFloorMicrovolts', 0.1);
-    p.addParameter('SlopeSpreadQuantile', 0.85);
+    p.addParameter('SlopeBaselineMs', 500);
+    p.addParameter('SlopeNoiseFloorMicrovolts', 1);
+    p.addParameter('SlopeSpreadQuantile', 0.95);
+    p.addParameter('SlopeExcludeMs', 150);
     p.addParameter('ThresholdPairs', []);
     p.parse(varargin{:});
     opt = p.Results;
@@ -385,7 +390,7 @@ function r = detectStepsOneChannel(x, segments, valid, d, opt, pairs, srate)
     end
 
     [D, Dslope, z, s] = levelStatistic(x, d.W, d.gPre, d.gPost, valid, d.baseline, ...
-                                    opt.SlopeNoiseFloorMicrovolts, opt.SlopeSpreadQuantile);
+                                    opt.SlopeNoiseFloorMicrovolts, opt.SlopeSpreadQuantile, d.excludeHalf);
     r.floorBoundFraction = mean(s(valid) < opt.SlopeNoiseFloorMicrovolts);
     r.rawScale = robustSd(x(valid) - segmentMedians(x, segments, valid));
     dx = diff(x);
@@ -495,6 +500,7 @@ function d = derivedSamples(opt, srate)
     d.cmGap  = ms2n(opt.CommonModeGapMs);
     d.baseline = ms2n(opt.SlopeBaselineMs);
     if mod(d.baseline, 2) == 0; d.baseline = d.baseline + 1; end
+    d.excludeHalf = floor(round(opt.SlopeExcludeMs * srate / 1000) / 2);
 end
 
 function valid = validMask(segments, n, W, gPre, gPost)
@@ -507,7 +513,7 @@ function valid = validMask(segments, n, W, gPre, gPost)
     end
 end
 
-function [D, Dslope, z, s] = levelStatistic(x, W, gPre, gPost, valid, baselineN, noiseFloor, spreadQ)
+function [D, Dslope, z, s] = levelStatistic(x, W, gPre, gPost, valid, baselineN, noiseFloor, spreadQ, excludeHalf)
 % D(t): the settled level change across a TransitionMs + WindowMs lag, which sets the sign and
 % meets the absolute floor. Dslope(t): the same centred median filter differenced across the
 % transition allowance alone, so a level change is scored by how fast it happened. b(t): the
@@ -527,7 +533,7 @@ function [D, Dslope, z, s] = levelStatistic(x, W, gPre, gPost, valid, baselineN,
     D(t)      = mPost(t + gPost) - mPre(t - gPre);
     Dslope(t) = mc(t + gPost) - mc(t - gPre);
     b = movmedian(Dslope, baselineN, 'omitnan');
-    sAll = movingQuantileSd(Dslope - b, baselineN, spreadQ);
+    sAll = movingQuantileSd(Dslope - b, baselineN, spreadQ, excludeHalf);
     s(t) = sAll(t);
     z(t) = abs(Dslope(t) - b(t)) ./ max(s(t), noiseFloor);
 end
@@ -581,9 +587,12 @@ function [row, why] = refineCandidate(x, xs, z, chanZ, rs, re, a, b, opt, srate)
     searchLo = max(a, rs - (d.gPre + d.h));
     searchHi = min(b, re + (d.gPost + d.h));
 
-    % initial levels from the windows the statistic itself used at the run midpoint
-    Lpre  = median(x(mid0 - d.gPre - d.W + 1 : mid0 - d.gPre), 'omitnan');
-    Lpost = median(x(mid0 + d.gPost : mid0 + d.gPost + d.W - 1), 'omitnan');
+    % initial levels from the windows the statistic itself used at the run's first and last
+    % samples: the pre window of the first and the post window of the last lie outside the run
+    preWin  = rs - d.gPre - d.W + 1 : rs - d.gPre;
+    postWin = re + d.gPost : re + d.gPost + d.W - 1;
+    Lpre  = median(x(preWin), 'omitnan');
+    Lpost = median(x(postWin), 'omitnan');
 
     A = Lpost - Lpre;
     if ~(abs(A) >= opt.MinAmplitudeMicrovolts); why = 'amplitude'; return; end
@@ -602,8 +611,6 @@ function [row, why] = refineCandidate(x, xs, z, chanZ, rs, re, a, b, opt, srate)
     end
 
     % settle bands: a fraction of the amplitude, floored by the smoothed noise
-    preWin  = mid0 - d.gPre - d.W + 1 : mid0 - d.gPre;
-    postWin = mid0 + d.gPost : mid0 + d.gPost + d.W - 1;
     bandPre  = max(opt.BoundaryFraction * abs(A), opt.BoundaryNoiseMultiple * robustSd(xs(preWin)));
     bandPost = max(opt.BoundaryFraction * abs(A), opt.BoundaryNoiseMultiple * robustSd(xs(postWin)));
 
@@ -683,9 +690,10 @@ function s = quantileSd(v, q)
     s = quantile(v, q) / sqrt(2) / erfinv(q);
 end
 
-function s = movingQuantileSd(v, N, q)
-% quantileSd over a centred N-sample window at every sample, NaN ignored. Evaluated every
-% stride = N/20 samples and held in between: a spread over N samples moves little within N/20.
+function s = movingQuantileSd(v, N, q, excludeHalf)
+% quantileSd over a centred N-sample window at every sample, NaN ignored, leaving out the
+% 2*excludeHalf + 1 samples centred on it. Evaluated every stride = N/20 samples and held in
+% between: a spread over N samples moves little within N/20.
     n = numel(v);
     stride = max(1, floor(N / 20));
     h = floor(N / 2);
@@ -693,6 +701,7 @@ function s = movingQuantileSd(v, N, q)
     a = abs(v);
     vals = nan(1, numel(centres));
     offs = (-h:h)';
+    offs = offs(abs(offs) > excludeHalf);
     chunk = max(1, floor(2e7 / numel(offs)));
     for c0 = 1:chunk:numel(centres)
         cc = centres(c0 : min(numel(centres), c0 + chunk - 1));

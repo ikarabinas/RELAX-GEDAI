@@ -156,7 +156,8 @@ RELAX_add_vendored_noisetools();  % nt_detrend for RELAX_repair_steps, see vendo
 RELAX_cfg.caploc=[]; % path containing electrode positions. Set to =[] if electrode locations are already in your EEG file.
 
 % Specify the to be processed file locations:
-RELAX_cfg.myPath='/home/nga4004/TMS_response_variability/store/mdd_dlpfc/preprocessed_Sep26/rest_treat_joined/';
+RELAX_cfg.myPath='/home/nga4004/TMS_response_variability/store/mdd_dlpfc/preprocessed_Oct26/rest_treat_joined/';
+RELAX_cfg.OutputFolderName='RELAXProcessed_broadbandGEDAI'; % output folder inside myPath
 
 % Specify whether all data is in a single folder or data are in BIDS format
 % (each EEG file within its own separate folder):
@@ -216,7 +217,7 @@ end
 % Scope "skip already cleaned" to just this participant's files
 RELAX_cfg.OverwriteExistingCleanedFiles = 1; % 1 = reprocess and overwrite files even if a cleaned output already exists for them; 0 = skip files already in RELAXProcessed/Cleaned_Data (default, incremental reruns)
 if ~RELAX_cfg.OverwriteExistingCleanedFiles
-    already_cleaned = dir(fullfile(RELAX_cfg.myPath, 'RELAXProcessed', 'Cleaned_Data', '*RELAX*.set'));
+    already_cleaned = dir(fullfile(RELAX_cfg.myPath, RELAX_cfg.OutputFolderName, 'Cleaned_Data', '*RELAX*.set'));
     already_cleaned_names = {already_cleaned.name};
     already_processed = false(size(RELAX_cfg.dirList));
     for f = 1:numel(RELAX_cfg.dirList)
@@ -326,17 +327,18 @@ end
 
 RELAX_cfg.Perform_targeted_wICA=1; % This is the RELAX recommended artifact reduction method.
 
-RELAX_cfg.Run_GEDAI=0;  % IMK added
+RELAX_cfg.Run_GEDAI=1;  % IMK added
 % GEDAI settings; defaults match ~/TMS_response_variability/iTBS_pipeline.m
 RELAX_cfg.GEDAI_LeadfieldPath='/home/nga4004/TMS_response_variability/scratch/eeg_sources_data/full_leadfield/'; % per-participant raw leadfields '<ppt>_leadfield.mat' from generate_leadfield.py
 RELAX_cfg.GEDAI_ArtifactThreshold='auto';
 RELAX_cfg.GEDAI_BroadbandArtifactThreshold='auto-';
 RELAX_cfg.GEDAI_EpochCycles=300;
-RELAX_cfg.GEDAI_LowcutFreq=4.0;
+RELAX_cfg.GEDAI_LowcutFreq=1.0;
 RELAX_cfg.GEDAI_SlidingWindowSec=[];      % [] = one threshold fitted over the whole file
 RELAX_cfg.GEDAI_EpochENOVAThreshold=[];   % [] = no epoch rejection
 RELAX_cfg.GEDAI_ChanENOVAThreshold=[];    % [] = no channel rejection
 RELAX_cfg.GEDAI_MinEpochSize=1.0;         % seconds; floor on per-wavelet-band epoch length
+RELAX_cfg.GEDAI_BroadbandOnly=true;       % true = broadband stage only, no wavelet bands; GEDAI_ArtifactThreshold, GEDAI_EpochCycles and GEDAI_MinEpochSize are then unused
 RELAX_cfg.GEDAI_Visualize=false;
 
 % Boundary/discontinuity handling. The input files for this pipeline contain boundary
@@ -364,16 +366,16 @@ RELAX_cfg.Perform_pop_artifact_repair             = 1;
 % x the channel's own spread of the same statistic (this is what keeps slow 1/f drift out), AND
 % a level change of at least MinAmplitudeMicrovolts, then brackets the transition in one
 % pass (RefineTransition).
-RELAX_cfg.PopDetect_WindowMs                      = 151; % shipped 2026-09-23 slope-gate survey (docs/superpowers/reports/2026-09-23-slope-gate-survey.md, section 6)
-RELAX_cfg.PopDetect_TransitionMs                  = 4;
-RELAX_cfg.PopDetect_ZThreshold                    = 20;   % shipped 2026-09-23 slope-gate survey
-RELAX_cfg.PopDetect_ChannelZThreshold             = 35;   % shipped 2026-09-23 slope-gate survey
+RELAX_cfg.PopDetect_WindowMs                      = 101;
+RELAX_cfg.PopDetect_TransitionMs                  = 6;
+RELAX_cfg.PopDetect_ZThreshold                    = 10;   % v3 blind-scoring grid (2026-10-01), W 101 lag 6 baseline 500 floor 1
+RELAX_cfg.PopDetect_ChannelZThreshold             = 20;   % v3 blind-scoring grid (2026-10-01)
 RELAX_cfg.PopDetect_MinAmplitudeMicrovolts        = 15;
 RELAX_cfg.PopDetect_RefractoryMs                  = 10;   % same-sign candidate runs closer than this are one step
 RELAX_cfg.PopDetect_RefineTransition              = true; % single bracketing pass
-RELAX_cfg.PopDetect_SlopeBaselineMs               = 1000; % local window Dslope's own trend/spread is estimated over
-RELAX_cfg.PopDetect_SlopeNoiseFloorMicrovolts     = 0.1;
-RELAX_cfg.PopDetect_SlopeSpreadQuantile           = 0.85;  % quantile of |deviation|, scaled to sd units, used for the local and channel spreads
+RELAX_cfg.PopDetect_SlopeBaselineMs               = 500; % local window Dslope's own trend/spread is estimated over
+RELAX_cfg.PopDetect_SlopeNoiseFloorMicrovolts     = 1;
+RELAX_cfg.PopDetect_SlopeSpreadQuantile           = 0.95;  % quantile of |deviation|, scaled to sd units, used for the local and channel spreads
 % Chronically bad contacts are rejected (via the shared channel budget) rather than
 % repaired when EITHER of these binds: steps per minute, or fraction of samples inside a
 % transition. 6/min: each fill perturbs ~1 s of the channel after the highpass.
@@ -417,9 +419,14 @@ RELAX_cfg.PopRepair_MinSegmentSeconds             = 1.0;  % an excision is exten
 % docs/superpowers/reports/2026-09-21-reference-pop-survey.md. A candidate is kept only if
 % the per-channel level changes agree in sign on at least MinSignAgreement of channels and
 % their robust spread is at most MaxAmplitudeSpread of the median amplitude.
-RELAX_cfg.Perform_reference_pop_repair            = 0;    % set to 1 after Task 7 of the plan
+RELAX_cfg.Perform_reference_pop_repair            = 1;    % set to 1 after Task 7 of the plan
 RELAX_cfg.RefPop_MinChannels                      = 8;
-RELAX_cfg.RefPop_MinAmplitudeMicrovolts           = 10;   % the median averages out per-channel noise, so it can go well below the per-channel floor; the survey found 13 more real pops (15-30 uV) at 10 than at 30
+RELAX_cfg.RefPop_MinAmplitudeMicrovolts           = 10;   % the median averages out per-channel noise, so it can go well below the per-channel floor
+RELAX_cfg.RefPop_SlopeNoiseFloorMicrovolts        = 0.5;  % reference-channel blind scoring (2026-10-02), W 101 lag 2 baseline 1000 Z 10 CZ 20
+RELAX_cfg.RefPop_TransitionMs                     = 2;
+RELAX_cfg.RefPop_SlopeBaselineMs                  = 1000;
+RELAX_cfg.RefPop_ZThreshold                       = 10;
+RELAX_cfg.RefPop_ChannelZThreshold                = 20;
 RELAX_cfg.RefPop_MinSignAgreement                 = 0.9;
 RELAX_cfg.RefPop_MaxAmplitudeSpread               = 0.5;
 
@@ -441,7 +448,7 @@ RELAX_cfg.MaxImpedanceKOhm=500; % kOhm. Strictly greater-than; an unknown (NaN) 
 % undone) and reconstructed later by spherical interpolation, same as any other bad
 % channel. MaxProportionChannels/MaxClusterSize are QC-only warnings on the recording's
 % own reconstructability, not caps on what gets rejected - see RELAX_bridged_channels.
-RELAX_cfg.Perform_bridged_channel_rejection=1; % 1 = reject bridged channel clusters, 0 = skip
+RELAX_cfg.Perform_bridged_channel_rejection=0; % 1 = reject bridged channel clusters, 0 = skip
 RELAX_cfg.BridgeMaxProportionChannels=0.10; % QC flag only
 RELAX_cfg.BridgeMaxClusterSize=4; % QC flag only
 

@@ -39,6 +39,20 @@ function assert_smoke_outcome(cleanedFile, fixtureFile)
             assert(isfield(X, needed{k}), 'pop covariate %s missing', needed{k});
             assert(isscalar(X.(needed{k})) && isnumeric(X.(needed{k})), 'pop covariate %s is not a numeric scalar', needed{k});
         end
+        refNeeded = {'RefPopNCandidates','RefPopNSteps','RefPopNRejectedUniformity','RefPopNMerged', ...
+                     'RefPopStepsPerMinute','RefPopMedianAmplitude','RefPopMedianRiseMs', ...
+                     'RefPopMedianSignAgreement','RefPopMedianAmplitudeSpread', ...
+                     'RefPopTransitionSeconds','RefPopNChannelsUsed','RefPopChannelRobustSd'};
+        for f = refNeeded
+            assert(isfield(X, f{1}), 'missing reference-pop covariate %s', f{1});
+            assert(isnumeric(X.(f{1})) && isscalar(X.(f{1})), '%s must be a numeric scalar', f{1});
+        end
+        assert(isfield(OUT.RELAX, 'RefPopScreen') && OUT.RELAX.RefPopScreen.available, ...
+            'reference-pop screen must report available on the fixture');
+        assert(~isfield(OUT.RELAX.RefPopScreen, 'refChannel'), 'the virtual channel trace must not be saved with the .set');
+        assert(X.RefPopNSteps + X.RefPopNRejectedUniformity + X.RefPopNMerged == X.RefPopNCandidates, 'candidate bookkeeping');
+        fprintf('Reference-pop stage: %d candidates, %d subtracted, %d rejected by uniformity, %d merged.\n', ...
+            X.RefPopNCandidates, X.RefPopNSteps, X.RefPopNRejectedUniformity, X.RefPopNMerged);
         assert(OUT.RELAX.PopRepair.available, 'pop repair reported unavailable: %s', OUT.RELAX.PopRepair.status);
         % Blink-electrode fallback covariates (RELAX_blinks_IQR_method) are always written,
         % whether or not the fallback fired.

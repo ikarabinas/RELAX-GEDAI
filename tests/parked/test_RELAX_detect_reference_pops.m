@@ -99,5 +99,31 @@ function test_RELAX_detect_reference_pops()
     [~, refInfo9] = RELAX_detect_reference_pops(mkEEG(X), 'ExcludeLabels', {'E5'});
     assert(refInfo9.nSteps == 1 && isnan(refInfo9.perChannelAmplitude(5)));
 
+    %% 10. a staircase reference pop is returned as non-overlapping steps whose subtraction
+    %      restores the channels; every candidate records the step it was merged into
+    r10 = sigmoidStep(9000, 60, 20) + sigmoidStep(9040, 60, 20);
+    X10 = S - r10;
+    [refSteps10, refInfo10] = RELAX_detect_reference_pops(mkEEG(X10));
+    assert(refInfo10.nSteps >= 1 && all(abs(refSteps10.sample - 9020) < 100), 'staircase found: %s', mat2str(refSteps10.sample'));
+    [on, order] = sort(refSteps10.onset); off = refSteps10.offset(order);
+    assert(all(on(2:end) > off(1:end-1)), 'returned steps never overlap: %s', mat2str([on off]));
+    assert(abs(sum(refSteps10.amplitude) - (-120)) < 15, 'total amplitude %.1f', sum(refSteps10.amplitude));
+    assert(isnumeric(refInfo10.nMerged) && refInfo10.nMerged == refInfo10.nCandidates - refInfo10.nRejectedUniformity - refInfo10.nSteps);
+    assert(isequal(size(refInfo10.candidates.mergedInto), [refInfo10.nCandidates 1]));
+    assert(all(refInfo10.candidates.mergedInto(refInfo10.candidates.accepted) >= 1) && ...
+           all(refInfo10.candidates.mergedInto(~refInfo10.candidates.accepted) == 0));
+    assert(isequal(size(refInfo10.perChannelAmplitude), [N refInfo10.nSteps]));
+    assert(isequal(size(refInfo10.candidates.perChannelAmplitude), [N refInfo10.nCandidates]), ...
+        'candidates.perChannelAmplitude must be per-candidate, not per-step');
+    out10 = RELAX_subtract_reference_pops(mkEEG(X10), refSteps10, refInfo10.refChannel.data, ...
+        'WindowMs', refInfo10.detectInfo.params.WindowMs);
+    resid10 = out10.data - S;
+    assert(max(abs(resid10(:))) < 3 * noise, 'subtracting the returned steps restores s_i (max %.1f)', max(abs(resid10(:))));
+    assert(isequal(size(refInfo7.candidates.mergedInto), [0 1]) && refInfo7.nMerged == 0);
+
+    %% 11. a rejected candidate is merged nowhere (the merge itself is pinned by
+    %      test_RELAX_merge_overlapping_steps; the detector may or may not double-bracket the staircase)
+    assert(isfield(refInfo3.candidates, 'mergedInto') && refInfo3.candidates.mergedInto(k) == 0, 'a rejected candidate is merged nowhere');
+
     fprintf('test_RELAX_detect_reference_pops: PASS\n');
 end

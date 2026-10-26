@@ -20,4 +20,4 @@ cd /home/nga4004/gitRepos/RELAX-GEDAI
 matlab -nodisplay -nosplash -batch "\
 addpath('/home/nga4004/tools/eeglab2026.0.0'); \
 addpath(pwd); \
-survey_reference_pops('reference_pop_survey.mat');"
+survey_reference_pops('reference_pop_survey_task7.mat', struct('figDir', 'docs/superpowers/reports/reference_pop_survey/task7'));"

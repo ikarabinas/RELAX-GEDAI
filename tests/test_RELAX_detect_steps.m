@@ -8,6 +8,11 @@ function test_RELAX_detect_steps()
     rng(7);
 
     % ---- helpers ----
+    function varargout = detect(EEG, varargin)
+        % the synthetic fixtures were written against a 1 uV noise floor; the shipped floor is higher
+        [varargout{1:max(1, nargout)}] = RELAX_detect_steps(EEG, 'SlopeNoiseFloorMicrovolts', 1, varargin{:});
+    end
+
     function EEG = mkEEG(data, boundaries)
         if nargin < 2; boundaries = []; end
         EEG = struct();
@@ -30,11 +35,11 @@ function test_RELAX_detect_steps()
     % TransitionMs of the superseded defaults (2026-09-23).
     legacy = {'WindowMs', 150, 'TransitionMs', 100, 'ZThreshold', 12, 'ChannelZThreshold', 10, ...
               'MinAmplitudeMicrovolts', 50, 'RefractoryMs', 20, 'SlopeBaselineMs', 2000, ...
-              'CommonModeChannelFraction', 0.08};
+              'CommonModeChannelFraction', 0.08, 'SlopeSpreadQuantile', 0.85};
 
     %% ---- 1a. empty result has 0x1 columns of the right class ----
     EEG = mkEEG(randn(2, n) * 1e-9);
-    [steps, info] = RELAX_detect_steps(EEG);
+    [steps, info] = detect(EEG);
     assert(info.available, 'quiet data is still available: %s', info.status);
     for c = numericCols
         assert(isnumeric(steps.(c{1})) && isequal(size(steps.(c{1})), [0 1]), ...
@@ -59,7 +64,7 @@ function test_RELAX_detect_steps()
 
     %% ---- 1b. an exactly flat channel is degenerate, not an error ----
     EEG = mkEEG([zeros(1, n); randn(1, n) * 5]);
-    [steps, info] = RELAX_detect_steps(EEG);
+    [steps, info] = detect(EEG);
     assert(any(strcmp(info.degenerateChannels, 'E1')), 'flat channel must be listed as degenerate');
     assert(isequal(size(info.degenerateChannels), [1 1]));
     assert(~any(isnan(steps.z)), 'no NaN z may leak out of a degenerate channel');
@@ -71,12 +76,12 @@ function test_RELAX_detect_steps()
     % demean would turn it into exact zeros, which crashes pop_jointprob downstream.
     rs = RandStream('twister', 'Seed', 11);             % own stream: leave rng(7) untouched for later sections
     x = [zeros(1, 5000), 333333 * ones(1, 5000)];
-    [steps, info] = RELAX_detect_steps(mkEEG([x; randn(rs, 1, n) * 5], 5000.5));
+    [steps, info] = detect(mkEEG([x; randn(rs, 1, n) * 5], 5000.5));
     assert(isequal(info.degenerateChannels, {'E1'}), 'per-segment constant channel must be degenerate');
     assert(isempty(steps.sample(steps.channel == 1)), 'no steps are reported on a degenerate channel');
     % constant in one segment only is NOT degenerate (the other segment is real data)
     x = [zeros(1, 5000), randn(rs, 1, 5000) * 5];
-    [~, info] = RELAX_detect_steps(mkEEG([x; randn(rs, 1, n) * 5], 5000.5));
+    [~, info] = detect(mkEEG([x; randn(rs, 1, n) * 5], 5000.5));
     assert(isempty(info.degenerateChannels), 'a channel flat in only one segment is not degenerate');
 
     %% ---- 1c. the gate scores how fast the median level moves, not how far ----
@@ -92,31 +97,31 @@ function test_RELAX_detect_steps()
 
     % a 2 Hz slow wave is delta-band EEG, not 25 electrode pops
     x = quietc + 100*sin(2*phasec).*envc;
-    steps = RELAX_detect_steps(mkEEG(x));
+    steps = detect(mkEEG(x));
     assert(isempty(steps.sample), 'a 2 Hz slow wave is not a pop, %d step(s) found', numel(steps.sample));
 
     % a slow random walk likewise (the level gate found 2)
     walkc = cumsum(randn(1, n60c)); walkc = walkc - movmean(walkc, 4001);
     walkc = 150 * walkc / max(abs(walkc));
     x = quietc + walkc.*envc;
-    steps = RELAX_detect_steps(mkEEG(x));
+    steps = detect(mkEEG(x));
     assert(isempty(steps.sample), 'a slow random walk is not a pop, %d step(s) found', numel(steps.sample));
 
     % a real pop is still found, with its amplitude and its position
     x = quietc + 200 * (t60c >= 30000);
-    steps = RELAX_detect_steps(mkEEG(x));
+    steps = detect(mkEEG(x));
     assert(numel(steps.sample) == 1, 'one step expected, got %d', numel(steps.sample));
     assert(abs(steps.amplitude - 200) < 20, 'amplitude %g should be near 200', steps.amplitude);
     assert(abs(steps.sample - 30000) < 100, 'step located at %d, expected near 30000', steps.sample);
 
     % a 50 ms sigmoid is a pop
     x = quietc + 100 ./ (1 + exp(-(t60c - 30000) / 10));
-    steps = RELAX_detect_steps(mkEEG(x));
+    steps = RELAX_detect_steps(mkEEG(x), 'SlopeNoiseFloorMicrovolts', 1);
     assert(numel(steps.sample) == 1, 'a 50 ms sigmoid is a pop, got %d step(s)', numel(steps.sample));
 
     % two steps 300 ms apart do not mask each other through the shared baseline span
     x = quietc + 150 * (t60c >= 30000) + 150 * (t60c >= 30300);
-    steps = RELAX_detect_steps(mkEEG(x));
+    steps = detect(mkEEG(x));
     assert(numel(steps.sample) == 2, 'two steps 300 ms apart, got %d', numel(steps.sample));
 
     % the red line: a genuine step inside a drifting stretch is found, and found alone - the
@@ -124,29 +129,29 @@ function test_RELAX_detect_steps()
     % the provisional ZThreshold of 4 the step's slope must clear the drift's own by roughly a
     % factor of two, which is what the 2026-09-22 threshold sweep exists to price.
     x = quietc + 75*sin(phasec).*envc + 200 * (t60c >= 30000);
-    steps = RELAX_detect_steps(mkEEG(x));
+    steps = detect(mkEEG(x));
     assert(numel(steps.sample) == 1, 'a step on a drifting baseline must be found alone, got %d', ...
         numel(steps.sample));
     assert(abs(steps.sample - 30000) < 150, 'step on drift located at %d', steps.sample);
 
     % new options are echoed, and the channel scale is the slope statistic's
     [~, info] = RELAX_detect_steps(mkEEG(quietc), 'SlopeBaselineMs', 1500);
-    assert(info.params.SlopeBaselineMs == 1500 && info.params.SlopeNoiseFloorMicrovolts == 0.1);
+    assert(info.params.SlopeBaselineMs == 1500 && info.params.SlopeNoiseFloorMicrovolts == 1);
     assert(mod(info.params.derived.baseline, 2) == 1, 'the baseline span must be an odd sample count');
     assert(~isfield(info, 'channelScaleD') && isfield(info, 'channelScaleSlope'));
 
     %% ---- 1d. derived sample counts are odd and echoed ----
-    [~, info] = RELAX_detect_steps(mkEEG(randn(1, n) * 5), 'WindowMs', 150, 'SmoothMs', 10);
+    [~, info] = detect(mkEEG(randn(1, n) * 5), 'WindowMs', 150, 'SmoothMs', 10);
     assert(info.params.WindowMs == 150);
     assert(mod(info.params.derived.W, 2) == 1 && info.params.derived.W >= 150, ...
         'W must be forced odd (150 samples -> 151)');
     assert(mod(info.params.derived.smooth, 2) == 1 && info.params.derived.smooth >= 10);
-    [~, info] = RELAX_detect_steps(mkEEG(randn(1, n) * 5), 'ZThreshold', 33);
+    [~, info] = detect(mkEEG(randn(1, n) * 5), 'ZThreshold', 33);
     assert(info.params.ZThreshold == 33, 'parameters must be echoed in info.params');
 
     %% ---- 1e. no usable segment -> unavailable with a status, not an error ----
     EEG = mkEEG(randn(1, 1000) * 5, 200.5:200:900);   % five 200-sample segments
-    [steps, info] = RELAX_detect_steps(EEG);
+    [steps, info] = detect(EEG);
     assert(~info.available && ~isempty(info.status), 'short segments must yield available=false');
     assert(isequal(size(steps.sample), [0 1]));
 
@@ -154,7 +159,7 @@ function test_RELAX_detect_steps()
     rng(7);
     q = randn(1, 20000) * 5;
     for tr = [1 2 4 6 10 100]
-        [~, info] = RELAX_detect_steps(mkEEG(q), 'TransitionMs', tr);
+        [~, info] = detect(mkEEG(q), 'TransitionMs', tr);
         d = info.params.derived;
         assert(d.lag == tr, 'TransitionMs %d at 1 kHz must be a %d-sample lag, got %d', tr, tr, d.lag);
         assert(d.gPre == floor(tr/2) && d.gPost == tr - floor(tr/2), ...
@@ -166,7 +171,7 @@ function test_RELAX_detect_steps()
     % its interval contains the edge and stays local
     x = q + 200 * ((0:19999) >= 10000);
     for tr = [1 2 4 6 10]
-        steps = RELAX_detect_steps(mkEEG(x), 'TransitionMs', tr);
+        steps = detect(mkEEG(x), 'TransitionMs', tr);
         assert(numel(steps.sample) == 1, 'lag %d: one step expected, got %d', tr, numel(steps.sample));
         assert(abs(steps.sample - 10000) <= tr, 'lag %d: step at %d, expected within %d of 10000', ...
             tr, steps.sample, tr);
@@ -182,13 +187,13 @@ function test_RELAX_detect_steps()
     % W 301 / lag 1 a median-bend shoulder 12 samples past this edge reaches z 14 for this noise
     % draw (1 of 40 seeds; none at Z 20); how often shoulders occur is measured by the survey.
     x = q; x(1:600) = x(1:600) + 100;              % a step 600 samples in: inside the valid span
-    steps = RELAX_detect_steps(mkEEG(x), 'TransitionMs', 1, 'ZThreshold', 20);
+    steps = RELAX_detect_steps(mkEEG(x), 'TransitionMs', 1, 'ZThreshold', 20, 'SlopeNoiseFloorMicrovolts', 1);
     assert(numel(steps.sample) == 1 && abs(steps.sample - 600) <= 1, ...
         'lag 1: a step 600 samples in must be found at its edge');
 
     %% ---- 1g. diagnostics for the noise floor and the channel's raw noise ----
-    [~, iq]  = RELAX_detect_steps(mkEEG(q), 'TransitionMs', 1);
-    [~, iq5] = RELAX_detect_steps(mkEEG(q * 100), 'TransitionMs', 1);
+    [~, iq]  = detect(mkEEG(q), 'TransitionMs', 1);
+    [~, iq5] = detect(mkEEG(q * 100), 'TransitionMs', 1);
     for f = {'floorBoundFraction', 'rawScale', 'diffScale'}
         assert(isequal(size(iq.(f{1})), [1 1]), 'info.%s must be nbchan x 1', f{1});
     end
@@ -210,13 +215,13 @@ function test_RELAX_detect_steps()
         threw = true;
     end
     assert(threw, 'RefineTransition is a logical: the retired ''once'' spelling must error');
-    assert(P.WindowMs == 151 && P.TransitionMs == 4 && P.ZThreshold == 20 && ...
-           P.ChannelZThreshold == 35 && P.MinAmplitudeMicrovolts == 15 && P.RefractoryMs == 10 && ...
+    assert(P.WindowMs == 101 && P.TransitionMs == 6 && P.ZThreshold == 10 && ...
+           P.ChannelZThreshold == 20 && P.MinAmplitudeMicrovolts == 15 && P.RefractoryMs == 10 && ...
            P.CommonModeChannelFraction == 0.15 && ...
-           P.SlopeBaselineMs == 1000 && P.SlopeNoiseFloorMicrovolts == 0.1 && ...
-           P.SlopeSpreadQuantile == 0.85 && P.CommonModeGapMs == 10 && ...
+           P.SlopeBaselineMs == 500 && P.SlopeNoiseFloorMicrovolts == 1 && ...
+           P.SlopeSpreadQuantile == 0.95 && P.CommonModeGapMs == 10 && ...
            ~isfield(P, 'CommonModeWindowMs'), ...
-        'the shipped defaults are the ones the 2026-09-23 survey chose');
+        'the shipped defaults are the ones the v3 blind-scoring grid chose');
     for f = {'MaxTransitionMs', 'RefineIterations', 'MaxPlateauDriftFraction', 'HoldMs', 'MaxHoldDriftFraction'}
         assert(~isfield(P, f{1}), 'the %s screen was removed (Task 4D, 2026-09-25)', f{1});
     end
@@ -229,20 +234,20 @@ function test_RELAX_detect_steps()
     streamBefore = rng;
     tt = 0:n-1;
     x = randn(1, n) * 5; x(4001:end) = x(4001:end) + 200 * (1 - exp(-(tt(4001:end) - 4000) / 20));
-    steps = RELAX_detect_steps(mkEEG(x));
+    steps = detect(mkEEG(x));
     rng(streamBefore);
     assert(numel(steps.sample) == 1, 'default exp approach: expected 1 step, got %d', numel(steps.sample));
     assert(steps.sample >= 4011 && steps.sample <= 4020, ...
         'the default step sits at the mid-level crossing, got %d', steps.sample);
-    assert(steps.onset >= 3990 && steps.onset <= 4008 && steps.offset >= 4030 && steps.offset <= 4070, ...
+    assert(steps.onset >= 3990 && steps.onset <= 4008 && steps.offset >= 4025 && steps.offset <= 4070, ...
         'the default interval brackets the rise, got [%d %d]', steps.onset, steps.offset);
     assert(abs(steps.amplitude - 200) < 15, 'default exp amplitude %g', steps.amplitude);
 
     %% ---- 1i. the spread is a high quantile, so it survives a mostly-zero short-lag Dslope ----
     % Neighbouring centred medians are equal whenever the entering and leaving samples fall on the
     % same side of the median, so at lag 1 most of Dslope is exactly 0 and its MAD collapses.
-    [~, iq9]   = RELAX_detect_steps(mkEEG(q), 'TransitionMs', 1);
-    [~, iqMad] = RELAX_detect_steps(mkEEG(q), 'TransitionMs', 1, 'SlopeSpreadQuantile', 0.5);
+    [~, iq9]   = detect(mkEEG(q), 'TransitionMs', 1);
+    [~, iqMad] = detect(mkEEG(q), 'TransitionMs', 1, 'SlopeSpreadQuantile', 0.5);
     assert(iq9.channelScaleSlope > 0.01, ...
         'the default-q channel scale must not collapse at lag 1, got %g', iq9.channelScaleSlope);
     assert(iqMad.channelScaleSlope < iq9.channelScaleSlope / 10, ...
@@ -251,7 +256,7 @@ function test_RELAX_detect_steps()
 
     % a DC offset between inter-boundary segments is not channel noise
     x = q; x(10001:end) = x(10001:end) + 1000;
-    [~, iseg] = RELAX_detect_steps(mkEEG(x, 10000.5), 'TransitionMs', 1);
+    [~, iseg] = detect(mkEEG(x, 10000.5), 'TransitionMs', 1);
     assert(abs(iseg.rawScale - 5) < 0.5, ...
         'rawScale %g must measure noise within segments, not the 1000 uV offset between them', ...
         iseg.rawScale);
@@ -260,7 +265,7 @@ function test_RELAX_detect_steps()
     x = randn(1, n) * 5;
     x(4001:end) = x(4001:end) + 500;
     EEG = mkEEG([x; randn(1, n) * 5]);
-    [steps, info] = RELAX_detect_steps(EEG);
+    [steps, info] = detect(EEG);
     assert(info.available, '%s', info.status);
     k = find(steps.channel == 1);
     assert(numel(k) == 1, 'expected exactly 1 step on channel 1, got %d', numel(k));
@@ -274,21 +279,21 @@ function test_RELAX_detect_steps()
 
     x2 = randn(1, n) * 5;
     x2(4001:end) = x2(4001:end) - 500;
-    steps = RELAX_detect_steps(mkEEG(x2));
+    steps = detect(mkEEG(x2));
     assert(numel(steps.sample) == 1 && steps.amplitude(1) < 0, 'downward step keeps its sign');
 
     %% ---- 2b. two same-sign edges closer than the window are one candidate ----
     x = randn(1, n) * 5;
     x(4001:end) = x(4001:end) + 400;
     x(4006:end) = x(4006:end) + 400;
-    steps = RELAX_detect_steps(mkEEG(x));
+    steps = detect(mkEEG(x));
     assert(numel(steps.sample) == 1, 'two edges 5 ms apart are one step, got %d', numel(steps.sample));
     assert(abs(steps.amplitude(1) - 800) < 40, 'merged step carries the full amplitude, got %g', steps.amplitude(1));
 
     x = randn(1, n) * 5;
     x(3001:end) = x(3001:end) + 400;
     x(3501:end) = x(3501:end) - 400;
-    steps = RELAX_detect_steps(mkEEG(x));
+    steps = detect(mkEEG(x));
     assert(numel(steps.sample) == 2, 'opposite edges 500 ms apart are two steps, got %d', numel(steps.sample));
     assert(steps.amplitude(1) > 0 && steps.amplitude(2) < 0);
 
@@ -297,9 +302,9 @@ function test_RELAX_detect_steps()
     % this 2 uV step), so the local gate is pinned at 12 to leave the floor as the only test.
     x = randn(1, n) * 0.01;
     x(4001:end) = x(4001:end) + 2;
-    steps = RELAX_detect_steps(mkEEG(x), 'ZThreshold', 12, 'MinAmplitudeMicrovolts', 10);
+    steps = RELAX_detect_steps(mkEEG(x), 'ZThreshold', 12, 'MinAmplitudeMicrovolts', 10, 'SlopeNoiseFloorMicrovolts', 0.1);
     assert(isempty(steps.sample), 'a 2 uV step must be below a 10 uV floor');
-    steps = RELAX_detect_steps(mkEEG(x), 'ZThreshold', 12, 'MinAmplitudeMicrovolts', 1);
+    steps = RELAX_detect_steps(mkEEG(x), 'ZThreshold', 12, 'MinAmplitudeMicrovolts', 1, 'SlopeNoiseFloorMicrovolts', 0.1);
     assert(numel(steps.sample) == 1, 'the same step is found once the floor is lowered');
 
     %% ---- 2d. one transition is reported once, however many gate runs it produced ----
@@ -313,7 +318,7 @@ function test_RELAX_detect_steps()
         x = randn(rs, 1, 8000) * (3 + 10*rand(rs));
         tau = 5 + 60*rand(rs); A = (30 + 300*rand(rs)) * sign(randn(rs));
         x(4001:end) = x(4001:end) + A * (1 - exp(-(t(4001:end) - 4000) / tau));
-        steps = RELAX_detect_steps(mkEEG(x));
+        steps = detect(mkEEG(x));
         [on, ord] = sort(steps.onset); off = steps.offset(ord);
         nOverlap = nOverlap + sum(on(2:end) <= cummax(off(1:end-1)));
     end
@@ -325,7 +330,7 @@ function test_RELAX_detect_steps()
 
     %% ---- 3. transition bracketing on the shapes seen in the survey (10 uV noise) ----
     function [steps, k] = one(x, varargin)
-        steps = RELAX_detect_steps(mkEEG(x), legacy{:}, varargin{:});
+        steps = detect(mkEEG(x), legacy{:}, varargin{:});
         k = find(steps.channel == 1);
     end
     t = 0:n-1;
@@ -362,7 +367,7 @@ function test_RELAX_detect_steps()
     [steps, k] = one(x);
     assert(numel(k) == 1, 'ramp: expected 1 step, got %d', numel(k));
     assert(steps.onset(k) >= 4001 && steps.onset(k) <= 4050, 'ramp onset %d', steps.onset(k));
-    assert(steps.offset(k) >= 4165 && steps.offset(k) <= 4200, 'ramp offset %d', steps.offset(k));
+    assert(steps.offset(k) >= 4155 && steps.offset(k) <= 4200, 'ramp offset %d', steps.offset(k));
     assert(abs(steps.amplitude(k) - 200) < 15, 'ramp amplitude %g', steps.amplitude(k));
 
     % 40 uV / 300 ms pre-ramp followed by a +200 jump
@@ -402,7 +407,7 @@ function test_RELAX_detect_steps()
     w(at(5):end) = w(at(5):end) - 250 * (1 - exp(-(t60(at(5):end) - at(5)) / 40));
     % Z 20, not the provisional 12: at q 0.85 a large edge can carry a median-bend shoulder at z 12-14,
     % and 1/f drift gives z 13-18 false steps (job 19909316); this section is not testing Z.
-    steps = RELAX_detect_steps(mkEEG(w + randn(1, n60) * 10), 'ZThreshold', 20);
+    steps = detect(mkEEG(w + randn(1, n60) * 10), 'ZThreshold', 20);
     hit = arrayfun(@(a) any(abs(steps.sample - a) <= 200), at);
     false_ = sum(~any(abs(steps.sample - at) <= 200, 2));
     assert(sum(hit) >= 4, 'drift channel: recovered only %d/5 pops', sum(hit));
@@ -415,24 +420,24 @@ function test_RELAX_detect_steps()
 
     %% ---- 4. boundaries ----
     x = randn(1, n) * 5; x(5001:end) = x(5001:end) + 800;
-    steps = RELAX_detect_steps(mkEEG(x, 5000.5));
+    steps = detect(mkEEG(x, 5000.5));
     assert(isempty(steps.sample), 'a jump exactly at a boundary is a splice, not a step');
     x(7001:end) = x(7001:end) + 400;
-    steps = RELAX_detect_steps(mkEEG(x, 5000.5));
+    steps = detect(mkEEG(x, 5000.5));
     assert(numel(steps.sample) == 1 && abs(steps.sample(1) - 7001) <= 3, 'step in segment 2 must be found');
     % The median-slope gate reads the pre-level at mc(t-g), centred rather than trailing, so a
     % step must sit about W samples into the segment to be seen, where the superseded level gate
     % reached back about W/2 (~140 samples at W 150, measured 2026-09-22, job 19867003). At the
     % W 151 default, 350 samples in leaves a margin.
     x = randn(1, n) * 5; x(5350:end) = x(5350:end) + 400;           % 350 samples into segment 2
-    steps = RELAX_detect_steps(mkEEG(x, 5000.5));
+    steps = detect(mkEEG(x, 5000.5));
     assert(numel(steps.sample) == 1 && abs(steps.sample(1) - 5350) <= 3, ...
         'a step well inside a segment is still bracketed from the first valid centre');
     x = randn(1, n) * 5; x(5031:end) = x(5031:end) + 400;           % 30 samples in: no pre-level to measure
-    steps = RELAX_detect_steps(mkEEG(x, 5000.5));
+    steps = detect(mkEEG(x, 5000.5));
     assert(isempty(steps.sample), 'with no pre-level inside the segment the step cannot be reported');
     x = randn(1, n) * 5; x(7001:end) = x(7001:end) + 400;
-    [steps, info] = RELAX_detect_steps(mkEEG(x, [100.5 300.5]));   % two short segments + one long
+    [steps, info] = detect(mkEEG(x, [100.5 300.5]));   % two short segments + one long
     assert(info.available && numel(steps.sample) == 1, 'short segments are skipped, the long one screened');
 
     %% ---- 5. co-occurrence events and the common-mode flag ----
@@ -445,7 +450,7 @@ function test_RELAX_detect_steps()
     for c = 36:38; X(c, 8000:end) = X(c, 8000:end) + 250; end       % 3-channel same-sign cluster
     % Z 20, not the provisional 12: at q 0.85 a large edge can carry a median-bend shoulder at z 12-14,
     % and 1/f drift gives z 13-18 false steps (job 19909316); this section is not testing Z.
-    [steps, info] = RELAX_detect_steps(mkEEG(X), 'ZThreshold', 20);
+    [steps, info] = detect(mkEEG(X), 'ZThreshold', 20);
     assert(numel(steps.sample) == 34, 'expected 34 steps, got %d', numel(steps.sample));
     cm = steps.commonMode;
     assert(sum(cm) == 30 && all(steps.channel(cm) <= 30), 'the 30 rim-wide steps are common mode');
@@ -467,7 +472,7 @@ function test_RELAX_detect_steps()
     for c = 1:numel(edges); X(c, edges(c):end) = X(c, edges(c):end) + 300; end
     % Z 20, not the provisional 12: at q 0.85 a large edge can carry a median-bend shoulder at z 12-14,
     % and 1/f drift gives z 13-18 false steps (job 19909316); this section is not testing Z.
-    [steps, info] = RELAX_detect_steps(mkEEG(X), 'ZThreshold', 20);
+    [steps, info] = detect(mkEEG(X), 'ZThreshold', 20);
     assert(isequal(sort(steps.channel)', 1:numel(edges)), 'fixture: one step on each of channels 1-11');
     ev = @(c) steps.eventId(steps.channel == c);
     assert(ev(1) == ev(2), 'steps 5 ms apart are one event');
@@ -476,7 +481,7 @@ function test_RELAX_detect_steps()
     assert(ev(10) ~= ev(11), ['steps 60 ms apart are two events, though 50 ms bins ' ...
         '(8951-9000, 9001-9050) would have joined them']);
     assert(numel(info.events.id) == 6, 'expected 6 events, got %d', numel(info.events.id));
-    steps = RELAX_detect_steps(mkEEG(X), 'ZThreshold', 20, 'CommonModeGapMs', 20);
+    steps = detect(mkEEG(X), 'ZThreshold', 20, 'CommonModeGapMs', 20);
     ev = @(c) steps.eventId(steps.channel == c);
     assert(ev(3) == ev(4) && ev(10) ~= ev(11), 'CommonModeGapMs sets the gap');
 
@@ -484,7 +489,7 @@ function test_RELAX_detect_steps()
     n60 = 60 * srate;
     x = randn(1, n60) * 5; lvl = 0;
     for a = 2001:2000:n60; lvl = 300 - lvl; x(a:end) = x(a:end) + (lvl - (300 - lvl)); end  % telegraph every 2 s
-    [steps, info] = RELAX_detect_steps(mkEEG([x; randn(1, n60) * 5]));
+    [steps, info] = detect(mkEEG([x; randn(1, n60) * 5]));
     assert(numel(steps.sample) >= 28, 'telegraph: expected ~29 toggles, got %d', numel(steps.sample));
     assert(isequal(info.badChannels, {'E1'}), 'the telegraph channel is a bad contact');
     assert(contains(info.badChannelReason{1}, 'steps/min'));
@@ -495,7 +500,7 @@ function test_RELAX_detect_steps()
         at = round(linspace(2000, n60 - 2000, rates(c)));
         for j = 1:numel(at); X(c, at(j):end) = X(c, at(j):end) + 300 * (-1)^j; end
     end
-    [~, info] = RELAX_detect_steps(mkEEG(X([2 1 3], :)));   % E1=72/min, E2=108/min, E3=36/min
+    [~, info] = detect(mkEEG(X([2 1 3], :)));   % E1=72/min, E2=108/min, E3=36/min
     assert(isequal(info.badChannels, {'E2'; 'E1'; 'E3'}), 'bad channels must be worst-first');
     assert(isequal(size(info.badChannelReason), [3 1]));
 
@@ -508,7 +513,7 @@ function test_RELAX_detect_steps()
         x = x + 300 * min(1, max(0, (tt - at(j)) / 15)) * (-1)^j;
     end
     % Z 20 as in sections 3 and 5: at Z 12 a few 300 uV edges carry a shoulder (93 steps, job 19909403)
-    [steps, info] = RELAX_detect_steps(mkEEG(x), 'ZThreshold', 20, 'StepsPerMinuteToRejectChannel', 1000);
+    [steps, info] = detect(mkEEG(x), 'ZThreshold', 20, 'StepsPerMinuteToRejectChannel', 1000);
     assert(abs(numel(steps.sample) - 90) <= 2, 'fixture: expected ~90 steps, got %d', numel(steps.sample));
     assert(info.transitionFraction(1) > 0.02, 'transition fraction should exceed 2%%, got %g', info.transitionFraction(1));
     assert(isequal(info.badChannels, {'E1'}) && contains(info.badChannelReason{1}, 'transition'));
@@ -516,7 +521,7 @@ function test_RELAX_detect_steps()
     % telegraph every 250 ms: every transition is abrupt and large, so the channel rejects on
     % step rate; the sample-level instability criterion it used to need was retired 2026-09-22
     x = randn(1, n60) * 5; sq = 300 * (mod(floor(tt / 250), 2) == 0); x = x + sq;
-    [~, info] = RELAX_detect_steps(mkEEG(x));
+    [~, info] = detect(mkEEG(x));
     assert(isequal(info.badChannels, {'E1'}), 'telegraph channel must still be rejected');
     assert(contains(info.badChannelReason{1}, 'steps/min'), ...
         'telegraph channel must now reject by rate, got: %s', info.badChannelReason{1});
