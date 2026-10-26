@@ -607,6 +607,7 @@ RELAX_cfg.MaxProportionOfDataCanBeMarkedAsMuscle=0.50;  % Maximum amount of data
 % I set this reasonably high, because otherwise muscle artifacts could considerably influence the clean mask and add noise into the data
 RELAX_cfg.ProportionOfMuscleContaminatedEpochsAboveWhichToRejectChannel=0.50; % If the proportion of epochs showing muscle activity from an electrode is higher than this, the electrode is deleted. 
 % Set muscle proportion before deletion to 1 to not delete electrodes based on muscle activity
+RELAX_cfg.RejectMuscleChannelsAfterCleaning=1; % 1 = keep muscle-contaminated electrodes through ICA and GEDAI and apply the threshold above to the cleaned data instead; 0 = apply it before cleaning (RELAX default)
 RELAX_cfg.ProportionOfExtremeNoiseAboveWhichToRejectChannel=0.25; % If the proportion of all epochs from a single electrode that are marked as containing extreme artifacts is higher than this, the electrode is deleted
 
 RELAX_cfg.MaxProportionOfElectrodesThatCanBeDeleted=0.25; % Sets the maximum proportion of electrodes that are allowed to be deleted after PREP's bad electrode deletion step
