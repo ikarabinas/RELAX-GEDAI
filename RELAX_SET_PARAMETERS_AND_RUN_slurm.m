@@ -337,7 +337,7 @@ RELAX_cfg.GEDAI_LeadfieldPath='/home/nga4004/TMS_response_variability/scratch/ee
 RELAX_cfg.GEDAI_ArtifactThreshold='auto';
 RELAX_cfg.GEDAI_BroadbandArtifactThreshold='auto-';
 RELAX_cfg.GEDAI_EpochCycles=300;
-RELAX_cfg.GEDAI_LowcutFreq=1.0;
+RELAX_cfg.GEDAI_LowcutFreq=0.5;
 RELAX_cfg.GEDAI_SlidingWindowSec=[];      % [] = one threshold fitted over the whole file
 RELAX_cfg.GEDAI_EpochENOVAThreshold=[];   % [] = no epoch rejection
 RELAX_cfg.GEDAI_ChanENOVAThreshold=[];    % [] = no channel rejection
