@@ -1271,12 +1271,34 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
         % artifact periods for eye movement components, and high pass 
         % filtering muscle components at 15Hz:
         EEG.RELAXProcessing_wICA.aFileName=cellstr(FileName);
+        EEG_before_wICA = EEG;
         [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg);
         % setting 'RELAX_cfg.Report_all_wICA_info' to 1 will report proportion of ICs categorized as each category, and variance explained by ICs from each category (function is ~20s slower if this is implemented)
         EEG = eeg_checkset( EEG );
+        if isfield(RELAX_cfg,'Compute_wICA_removal_metrics') && RELAX_cfg.Compute_wICA_removal_metrics==1
+            % The blink detector targeted wICA applies to its own input, so blink epochs are
+            % set aside rather than read as brain signal lost
+            [blinkMarkedEEG, ~] = RELAX_blinks_IQR_method(EEG_before_wICA, EEG_before_wICA, RELAX_cfg);
+            [removalMetrics, removalPerChannel] = RELAX_wICA_removal_metrics(EEG_before_wICA, EEG, RELAX_cfg, ...
+                blinkMarkedEEG.RELAX.eyeblinkmask == 1);
+            clear blinkMarkedEEG
+            for removalField = fieldnames(removalMetrics)'
+                EEG.RELAXProcessing_wICA.(removalField{1}) = removalMetrics.(removalField{1});
+            end
+            removalDir = [RELAX_cfg.OutputPath 'wICA_removal'];
+            if ~exist(removalDir, 'dir'); mkdir(removalDir); end
+            save([removalDir filesep FileName '_wICA_removal.mat'], 'removalMetrics', 'removalPerChannel');
+        end
+        clear EEG_before_wICA
         RELAXProcessing_wICA=EEG.RELAXProcessing_wICA;
         % Record processing statistics for all participants in single table:
-        RELAXProcessing_wICA_AllParticipants(FileNumber,:) = struct2table(RELAXProcessing_wICA,'AsArray',true);
+        % Via RELAX_append_table_row: Report_all_wICA_info adds columns, so a table
+        % checkpointed by a run with the other setting has a different variable set
+        if ~exist('RELAXProcessing_wICA_AllParticipants','var')
+            RELAXProcessing_wICA_AllParticipants = [];
+        end
+        RELAXProcessing_wICA_AllParticipants = RELAX_append_table_row( ...
+            RELAXProcessing_wICA_AllParticipants, FileNumber, struct2table(RELAXProcessing_wICA,'AsArray',true));
     end
     
     
@@ -1285,12 +1307,18 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
         % The following performs wICA, implemented on only the components
         % marked as artifact by ICLabel.
         EEG.RELAXProcessing_wICA.aFileName=cellstr(FileName);
-        [EEG,~, ~, ~, ~] = RELAX_wICA_on_ICLabel_artifacts(EEG,RELAX_cfg.ICA_method, 1, 0, EEG.srate, 5,'coif5',RELAX_cfg.Report_all_ICA_info,RELAX_cfg.ICLabel_thresholds,RELAX_cfg.Clean_other_comps); 
+        [EEG,~, ~, ~, ~] = RELAX_wICA_on_ICLabel_artifacts(EEG,RELAX_cfg.ICA_method, 1, 0, EEG.srate, 5,'coif5',RELAX_cfg.Report_all_wICA_info,RELAX_cfg.ICLabel_thresholds,RELAX_cfg.Clean_other_comps); 
         % setting 'RELAX_cfg.Report_all_wICA_info' to 1 will report proportion of ICs categorized as each category, and variance explained by ICs from each category (function is ~20s slower if this is implemented)
         EEG = eeg_checkset( EEG );
         RELAXProcessing_wICA=EEG.RELAXProcessing_wICA;
         % Record processing statistics for all participants in single table:
-        RELAXProcessing_wICA_AllParticipants(FileNumber,:) = struct2table(RELAXProcessing_wICA,'AsArray',true);
+        % Via RELAX_append_table_row: Report_all_wICA_info adds columns, so a table
+        % checkpointed by a run with the other setting has a different variable set
+        if ~exist('RELAXProcessing_wICA_AllParticipants','var')
+            RELAXProcessing_wICA_AllParticipants = [];
+        end
+        RELAXProcessing_wICA_AllParticipants = RELAX_append_table_row( ...
+            RELAXProcessing_wICA_AllParticipants, FileNumber, struct2table(RELAXProcessing_wICA,'AsArray',true));
     end
     
     %% Perform ICA subtract on ICLabel identified artifacts that remain:

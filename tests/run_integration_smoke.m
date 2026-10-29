@@ -44,7 +44,7 @@ function run_integration_smoke(rejectMuscleChannelsAfterCleaning)
     RELAX_cfg.Perform_wICA_on_ICLabel = 0;
     RELAX_cfg.Perform_ICA_subtract = 0;
     RELAX_cfg.ICA_method = 'picard';
-    RELAX_cfg.Report_all_ICA_info = 'yes';
+    RELAX_cfg.Report_all_wICA_info = 'yes';
     RELAX_cfg.Clean_other_comps = 'no';
     RELAX_cfg.ICLabel_thresholds = [0.5 0.5 0.5 0.5 0.5 0.5 0.5];
     RELAX_cfg.computerawmetrics = 1;
@@ -106,10 +106,14 @@ function run_integration_smoke(rejectMuscleChannelsAfterCleaning)
     RELAX_cfg.MWF_delay_spacing_for_eye_movements = 16;
     RELAX_cfg.MWF_delay_spacing_for_muscle_artifacts = 2;
 
+    % The wrapper catches per-file errors and carries on, so a cleaned file left by an
+    % earlier run would let a failing run pass the checks below
+    cleanedDir = fullfile(fixtureDir, RELAX_cfg.OutputFolderName, 'Cleaned_Data');
+    delete(fullfile(cleanedDir, '*RELAX*.set'));
+
     RELAX_Wrapper_slurm(RELAX_cfg);
 
     % --- Assertions on the output --------------------------------------------------
-    cleanedDir = fullfile(fixtureDir, RELAX_cfg.OutputFolderName, 'Cleaned_Data');
     cleaned = dir(fullfile(cleanedDir, '*RELAX*.set'));
     assert(~isempty(cleaned), 'no cleaned file was written to %s', cleanedDir);
 
