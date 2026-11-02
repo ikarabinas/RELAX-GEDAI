@@ -16,7 +16,10 @@
 % icablinkmetrics are recomputed on the wICA input, rebuilt from Extremes_Rejected as the wrapper
 % built it (excise ExtremelyBadPeriodsForDeletion, average re-reference; no interpolation, so
 % ICA's own channels), using the saved unmixing matrix. The recomputed muscle-by-slope share is
-% checked against the one the run stored, so a mismatch shows the rebuild is wrong.
+% checked against the one the run stored, so a mismatch shows the rebuild is wrong. Channels the
+% deferred muscle screen rejected after wICA are no longer in the saved ICA; they are dropped from
+% the rebuilt input too, the column ChannelsDroppedFromICA counts them, and those files' slopes and
+% blink metrics are approximate.
 %
 % icablinkmetrics did not run in runs whose MATLAB path lacked it (the wrapper skips it
 % silently); then the blink columns say what it would have flagged, and BlinkMetricsRanInRun is
@@ -57,11 +60,13 @@ function components = reviewFile(runDir, runName, fileName, cleanedName)
     wICAinput = RELAX_average_rereference(wICAinput);
 
     icaLabels = {cleaned.chanlocs(cleaned.icachansind).labels};
-    [found, columns] = ismember({wICAinput.chanlocs.labels}, icaLabels);
-    assert(all(found), 'channels of the wICA input missing from the saved ICA: %s', ...
-        strjoin({wICAinput.chanlocs(~found).labels}, ', '));
+    [inSavedICA, columns] = ismember({wICAinput.chanlocs.labels}, icaLabels);
+    channelsDroppedFromICA = sum(~inSavedICA);
+    wICAinput = pop_select(wICAinput, 'channel', find(inSavedICA));
+    assert(wICAinput.nbchan == numel(icaLabels), 'channels of the saved ICA missing from the wICA input: %s', ...
+        strjoin(setdiff(icaLabels, {wICAinput.chanlocs.labels}), ', '));
     unmixing = cleaned.icaweights * cleaned.icasphere;
-    unmixing = unmixing(:, columns);
+    unmixing = unmixing(:, columns(inSavedICA));
     mixing = pinv(unmixing);
 
     activations = unmixing * double(wICAinput.data);
@@ -110,6 +115,7 @@ function components = reviewFile(runDir, runName, fileName, cleanedName)
     components.WaveletCleanedWholeRecording = isWaveletCleaned & ~isEye;
     components.HighFrequencySubtracted = components.MuscleBySlope;
     components.StoredMuscleBySlopeShare = repmat(storedShare, nComponents, 1);
+    components.ChannelsDroppedFromICA = repmat(channelsDroppedFromICA, nComponents, 1);
 end
 
 function blink = icablinkmetricsColumns(wICAinput, unmixing, mixing, activations, RELAX_cfg)
@@ -172,10 +178,15 @@ function lines = runSummary(run, runName)
     recomputedShare = accumarray(fileOfRow, run.MuscleBySlope, [], @mean);
     storedShare = accumarray(fileOfRow, run.StoredMuscleBySlopeShare, [], @mean);
     mismatch = abs(recomputedShare - storedShare) > 1e-9;
+    droppedChannels = accumarray(fileOfRow, run.ChannelsDroppedFromICA, [], @max);
+    approximate = droppedChannels > 0;
 
     lines = {['## ' runName], '', ...
         sprintf('- Rebuild check: recomputed muscle-by-slope share matches the stored one in %d of %d files%s', ...
             sum(~mismatch), numel(files), mismatchList(files(mismatch))), ...
+        sprintf(['- %d files had channels rejected after wICA (the deferred muscle screen removes them from the saved ICA); ' ...
+            'their slopes and blink metrics use the saved unmixing on the remaining channels, so they are approximate, ' ...
+            'and %d of them differ from the stored muscle-by-slope share'], sum(approximate), sum(approximate & mismatch)), ...
         sprintf('- icablinkmetrics ran in the run for %d of %d files; recomputed here it failed for %d files', ...
             numel(unique(run.File(run.BlinkMetricsRanInRun))), numel(files), ...
             numel(unique(run.File(run.BlinkMetricsError ~= "")))), '', ...
