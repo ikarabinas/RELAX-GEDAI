@@ -14,7 +14,7 @@
 
 function RELAX_QC_figures(stage, onlyFiles, outputFolderName)
 
-    myPath = '/home/nga4004/TMS_response_variability/store/mdd_dlpfc/preprocessed_Oct26/rest_treat_joined/';
+    myPath = '/home/nga4004/TMS_response_variability/store/mdd_dlpfc/preprocessed_Oct26_2exp/rest_treat_joined/';
     if nargin < 3, outputFolderName = 'RELAXProcessed_broadbandGEDAI'; end % the RELAX_cfg.OutputFolderName of the run being plotted
     comparisonFolderName = 'RELAXProcessed'; % the 'drawMatched' stage keeps only files cleaned in this run too
     % Hand-picked Figure 1 examples, replacing the automatic choice when non-empty, e.g.
