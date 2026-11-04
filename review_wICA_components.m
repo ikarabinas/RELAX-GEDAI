@@ -71,7 +71,11 @@ function components = reviewFile(runDir, runName, fileName, cleanedName)
 
     activations = unmixing * double(wICAinput.data);
     nComponents = size(activations, 1);
-    slopes = RELAX_IC_muscle_slopes(activations, wICAinput.srate, RELAX_cfg.LineNoiseFrequency);
+    if isfield(RELAX_cfg,'RespectBoundaries') && RELAX_cfg.RespectBoundaries
+        slopes = RELAX_IC_muscle_slopes(activations, wICAinput.srate, RELAX_cfg.LineNoiseFrequency, RELAX_get_segments(wICAinput));
+    else
+        slopes = RELAX_IC_muscle_slopes(activations, wICAinput.srate, RELAX_cfg.LineNoiseFrequency);
+    end
     muscleBySlope = slopes >= RELAX_cfg.MuscleSlopeThreshold;
 
     probabilities = cleaned.etc.ic_classification.ICLabel.classifications;

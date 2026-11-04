@@ -185,7 +185,13 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
     end
     ICsMostLikelyEye=(I==3)';
 
-    muscleRatio = RELAX_IC_muscle_slopes(EEG_with_ICA.icaact, EEG_with_ICA.srate, RELAX_cfg.LineNoiseFrequency);
+    % Spectra are fitted within each stretch of contiguous data, so the steps where boundaries
+    % splice unrelated moments together do not steepen the slope and hide muscle components.
+    if isfield(RELAX_cfg,'RespectBoundaries') && RELAX_cfg.RespectBoundaries
+        muscleRatio = RELAX_IC_muscle_slopes(EEG_with_ICA.icaact, EEG_with_ICA.srate, RELAX_cfg.LineNoiseFrequency, RELAX_get_segments(EEG_with_ICA));
+    else
+        muscleRatio = RELAX_IC_muscle_slopes(EEG_with_ICA.icaact, EEG_with_ICA.srate, RELAX_cfg.LineNoiseFrequency);
+    end
     muscle_ICs=muscleRatio>=RELAX_cfg.MuscleSlopeThreshold;
     ICsMostLikelyMuscle=(muscle_ICs==1);
 

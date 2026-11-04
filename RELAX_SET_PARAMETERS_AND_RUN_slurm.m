@@ -467,7 +467,7 @@ RELAX_cfg.n_ICA_comp='auto'; % Number of ICA components to use (only relevant fo
 RELAX_cfg.Report_all_wICA_info='yes'; % set to yes to provide detailed report of ICLabel artifact information. Runs ~20s slower per file.
 RELAX_cfg.Clean_other_comps='no'; % set to yes to clean independent components other than blinks and muscle activity
 
-RELAX_cfg.ICLabel_thresholds=[0.5 0.95 0.5 0.5 0.5 0.5 0.5]; % muscle at 0.95: muscle subtraction is chosen by spectral slope, so the ICLabel muscle label only adds wavelet cleaning, kept for components it is confident about
+RELAX_cfg.ICLabel_thresholds=[0.5 1 0.5 0.5 0.5 0.5 0.5]; % muscle at 1: muscle subtraction is chosen by spectral slope alone, so no component gets wavelet cleaning just for an ICLabel muscle label
 RELAX_cfg.Compute_wICA_removal_metrics=1; % 1 = record how much of each band wICA removed in muscle and non-muscle epochs (RELAX_wICA_removal_metrics), into the wICA statistics and RELAXProcessed/wICA_removal/
 % e.g. [0.5 0.8 0.8 0.5 0.5 0.5 0.5]; with values specifying comp types in the following order: ['Brain' 'Muscle' 'Eye'	'Heart'	'Line Noise' 'Channel Noise' 'Other']
 % set these to a decimal > 0 if you want components to only be considered as 
