@@ -235,39 +235,39 @@ function [continuousEEG, epochedEEG] = RELAX_excluding_extreme_values(continuous
         end
     end
 
-    %% Combine the pop masks into the full noise mask:
-    % Set templates for marking artifacts, initially just a EEG.data length
-    % of NaNs that the MWF template will ignore, which will be added to
-    % with 0's (clean periods) and 1's (artifacts) through the RELAX
-    % functions:
-    epochedEEG.RELAXProcessing.Details.ExtremeOutlierPeriods=epochedEEG.RELAXProcessing.Details.NaNsForNonEvents;
-    OneSecondOfNaNs=NaN(1,(round(1000/RELAX_cfg.ms_per_sample)));
-    OneSecondOf1s=ones(1,(round(1000/RELAX_cfg.ms_per_sample)));           
-    epochedEEG.RELAX.NaNsForExtremeOutlierPeriods=epochedEEG.RELAXProcessing.Details.NaNsForNonEvents;
-    % RELAX v1.1.6 addition to solve issue where noisemaskfulllength is not
-    % created unless MWF cleaning is applied or there are extreme outlier
-    % artifacts:
-    epochedEEG.RELAXProcessing.Details.NoiseMaskFullLength=epochedEEG.RELAXProcessing.Details.NaNsForNonEvents; 
-    % Use the epoch markings from all extreme rejection methods to create
-    % template of NaN's to be excluded from MWF cleaning artifact and clean
-    % period templates, and to be rejected from data before ICA:
-    for e=1:size(epochedEEG.RELAXProcessing.Details.AllMethodsExtremeEpochRejections,2)
-        if epochedEEG.RELAXProcessing.Details.AllMethodsExtremeEpochRejections(1,e)==1
-            epochedEEG.RELAXProcessing.Details.NoiseMaskFullLength(epochedEEG.event(e).originallatency:epochedEEG.event(e).originallatency+(round(1000/RELAX_cfg.ms_per_sample)-1))=OneSecondOfNaNs;
-            epochedEEG.RELAX.NaNsForExtremeOutlierPeriods(epochedEEG.event(e).originallatency:epochedEEG.event(e).originallatency+(round(1000/RELAX_cfg.ms_per_sample)-1))=OneSecondOfNaNs;
-            epochedEEG.RELAXProcessing.Details.ExtremeOutlierPeriods(epochedEEG.event(e).originallatency:epochedEEG.event(e).originallatency+(round(1000/RELAX_cfg.ms_per_sample)-1))=OneSecondOf1s;
-        end
+    %% Require at least ExtremeMinBadChannelsToRejectEpoch channels to reject an epoch:
+    % Each per-channel criterion above rejects an epoch if any one channel trips it, so
+    % on a dense montage most rejected epochs are condemned by a single channel. Absent
+    % or 1 keeps that rule. Single-channel kurtosis is left out because it never fed
+    % AllMethodsExtremeEpochRejections above; whole-montage kurtosis still rejects alone.
+    if ~isfield(RELAX_cfg, 'ExtremeMinBadChannelsToRejectEpoch')
+        RELAX_cfg.ExtremeMinBadChannelsToRejectEpoch = 1;
     end
-    % RELAX_excluding_channels_and_epoching_boundary stops each segment's last epoch
-    % one sample short of the segment end and stamps that final sample clean on the
-    % epoch's behalf. It must share that epoch's rejection, or eeg_eegrej leaves it as
-    % a one-sample island between the deletion and the boundary:
-    segments = RELAX_get_segments(continuousEEG);
-    segmentEnds = segments(segments(:,2) > segments(:,1), 2)';
-    rejectedSegmentEnds = segmentEnds(epochedEEG.RELAXProcessing.Details.ExtremeOutlierPeriods(segmentEnds-1) == 1);
-    epochedEEG.RELAXProcessing.Details.NoiseMaskFullLength(rejectedSegmentEnds) = NaN;
-    epochedEEG.RELAX.NaNsForExtremeOutlierPeriods(rejectedSegmentEnds) = NaN;
-    epochedEEG.RELAXProcessing.Details.ExtremeOutlierPeriods(rejectedSegmentEnds) = 1;
+    FlaggedChannels = squeeze(AmplitudeShiftWithinEachEpoch > ShiftUpperBound | AmplitudeShiftWithinEachEpoch < ShiftLowerBound) ...
+        | MaxInEpoch > ExtremeAbsoluteVoltageThreshold | MinInEpoch < -ExtremeAbsoluteVoltageThreshold ...
+        | epochedEEG.stats.jpE > RELAX_cfg.ExtremeImprobableVoltageDistributionThreshold ...
+        | epochedEEG.RELAXProcessing.Details.DriftRatioEpochsxChannels < RELAX_cfg.ExtremeDriftSlopeThreshold;
+    BadChannelsPerEpoch = sum(FlaggedChannels, 1);
+    RejectedByAllChannelKurtosis = epochedEEG.RELAXProcessing.Details.MarksForAllChannelKurt == 1;
+    RejectedIfAnyChannel = BadChannelsPerEpoch >= 1 | RejectedByAllChannelKurtosis;
+    Rejected = BadChannelsPerEpoch >= RELAX_cfg.ExtremeMinBadChannelsToRejectEpoch | RejectedByAllChannelKurtosis;
+    epochedEEG.RELAXProcessing.Details.BadChannelsPerEpoch = BadChannelsPerEpoch;
+    epochedEEG.RELAXProcessing.Details.AllMethodsExtremeEpochRejections = double(Rejected);
+    epochedEEG.RELAXProcessingExtremeRejections.ExtremeMinBadChannelsToRejectEpoch = RELAX_cfg.ExtremeMinBadChannelsToRejectEpoch;
+    epochedEEG.RELAXProcessingExtremeRejections.EpochsKeptWithFlaggedChannels = sum(~Rejected & BadChannelsPerEpoch > 0);
+    epochedEEG.RELAXProcessingExtremeRejections.FlaggedChannelEpochsKept = sum(BadChannelsPerEpoch(~Rejected));
+
+    %% Combine the pop masks into the full noise mask:
+    % ExtremeOutlierPeriods: 1 = rejected, 0 = evaluated and kept, NaN = never evaluated.
+    % The NaN masks used by MWF (NoiseMaskFullLength) and for deletion
+    % (NaNsForExtremeOutlierPeriods) are the same mask with rejected samples set to NaN.
+    epochedEEG.RELAXProcessing.Details.ExtremeOutlierPeriods = extreme_outlier_periods(Rejected, epochedEEG, continuousEEG, RELAX_cfg);
+    NaNsForExtremeOutlierPeriods = epochedEEG.RELAXProcessing.Details.ExtremeOutlierPeriods;
+    NaNsForExtremeOutlierPeriods(NaNsForExtremeOutlierPeriods == 1) = NaN;
+    epochedEEG.RELAX.NaNsForExtremeOutlierPeriods = NaNsForExtremeOutlierPeriods;
+    epochedEEG.RELAXProcessing.Details.NoiseMaskFullLength = NaNsForExtremeOutlierPeriods;
+    epochedEEG.RELAXProcessingExtremeRejections.ProportionExcludedIfAnyChannelRejected = ...
+        mean(extreme_outlier_periods(RejectedIfAnyChannel, epochedEEG, continuousEEG, RELAX_cfg), 'omitnan');
     % Take record of the proportion of the data marked as an extreme
     % outlier for rejection, and the epochs that were marked:
     epochedEEG.RELAXProcessingExtremeRejections.ProportionExcludedForExtremeOutlier=mean(epochedEEG.RELAXProcessing.Details.ExtremeOutlierPeriods,'omitnan');
@@ -301,4 +301,20 @@ function [continuousEEG, epochedEEG] = RELAX_excluding_extreme_values(continuous
     if isfield(epochedEEG, 'RELAX')==1
         continuousEEG.RELAX=epochedEEG.RELAX;
     end
+end
+
+function periods = extreme_outlier_periods(rejectedEpochs, epochedEEG, continuousEEG, RELAX_cfg)
+    periods = epochedEEG.RELAXProcessing.Details.NaNsForNonEvents;
+    samplesPerEpoch = round(1000/RELAX_cfg.ms_per_sample);
+    for e = find(rejectedEpochs)
+        onset = epochedEEG.event(e).originallatency;
+        periods(onset:onset + samplesPerEpoch - 1) = 1;
+    end
+    % RELAX_excluding_channels_and_epoching_boundary stops each segment's last epoch
+    % one sample short of the segment end and stamps that final sample clean on the
+    % epoch's behalf. It must share that epoch's rejection, or eeg_eegrej leaves it as
+    % a one-sample island between the deletion and the boundary:
+    segments = RELAX_get_segments(continuousEEG);
+    segmentEnds = segments(segments(:,2) > segments(:,1), 2)';
+    periods(segmentEnds(periods(segmentEnds - 1) == 1)) = 1;
 end

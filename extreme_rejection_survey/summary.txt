@@ -1,0 +1,70 @@
+Wrote /home/nga4004/gitRepos/RELAX-GEDAI/extreme_rejection_survey/extreme_rejection_survey.csv (89 files)
+
+== Reproduction check ==
+Files whose rerun matches the saved proportion excluded (|diff| < 1e-6): 89 / 89
+Largest |rerun - saved| proportion excluded: 0
+Files where per-channel flags disagree with RELAX epoch marks: 0
+Files where rule k>=1 differs from the rerun: 0
+
+== Proportion of evaluated data excluded, by rule (median [IQR] across files; mean within-participant SD across sessions) ==
+k1                     0.074 [0.046-0.116]  max 0.407  within-ppt SD 0.037
+k2                     0.040 [0.023-0.063]  max 0.396  within-ppt SD 0.026
+k3                     0.031 [0.016-0.053]  max 0.390  within-ppt SD 0.023
+k4                     0.023 [0.012-0.044]  max 0.383  within-ppt SD 0.019
+k5                     0.019 [0.011-0.038]  max 0.380  within-ppt SD 0.018
+k10                    0.014 [0.007-0.029]  max 0.355  within-ppt SD 0.016
+k20                    0.009 [0.005-0.020]  max 0.331  within-ppt SD 0.013
+pct1                   0.032 [0.016-0.054]  max 0.390  within-ppt SD 0.025
+pct2                   0.020 [0.011-0.038]  max 0.380  within-ppt SD 0.019
+pct5                   0.014 [0.007-0.028]  max 0.353  within-ppt SD 0.015
+pct10                  0.009 [0.005-0.020]  max 0.330  within-ppt SD 0.013
+dropWorst1             0.060 [0.043-0.100]  max 0.396  within-ppt SD 0.033
+dropWorst2             0.057 [0.040-0.088]  max 0.392  within-ppt SD 0.032
+dropWorst5             0.050 [0.034-0.081]  max 0.379  within-ppt SD 0.025
+dropWorst10            0.043 [0.029-0.072]  max 0.354  within-ppt SD 0.022
+dropWorst20            0.036 [0.019-0.058]  max 0.332  within-ppt SD 0.020
+Total deleted incl. never-evaluated data, current rule: median 0.084, max 0.412
+
+== Per criterion (median across files) ==
+shiftHigh    epochs flagged 0.047   flagged by this criterion alone 0.034
+shiftLow     epochs flagged 0.000   flagged by this criterion alone 0.000
+absVolt      epochs flagged 0.005   flagged by this criterion alone 0.000
+jointProb    epochs flagged 0.006   flagged by this criterion alone 0.000
+drift        epochs flagged 0.000   flagged by this criterion alone 0.000
+kurtSingleUnused epochs flagged 0.023   flagged by this criterion alone NaN
+kurtAll      epochs flagged 0.001   flagged by this criterion alone 0.000
+
+== Bad channels per flagged epoch, pooled over files ==
+  1-1    channels: 0.400 of flagged epochs
+  2-2    channels: 0.113 of flagged epochs
+  3-4    channels: 0.112 of flagged epochs
+  5-9    channels: 0.085 of flagged epochs
+ 10-19   channels: 0.068 of flagged epochs
+ 20-Inf  channels: 0.221 of flagged epochs
+
+Correlation of current-rule loss with channel count: r = -0.14
+
+== TMS analysis windows (post 0.5-2.5 s, pre -2.1 to -0.1 s) ==
+Files using trainIdx boundaries: 89 / 89 (others fall back to all boundaries)
+Windows: 5311 post, 5311 pre (median per file 60 / 60); dropped for crossing another boundary: 2 post, 2 pre
+Touching never-evaluated data (lost under every rule, not counted below): 0 post, 0 pre
+
+== Rejected stretches and windows losing data, by rule (never-evaluated data excluded) ==
+rule          stretches   per file  splitting  per file     post hit (%)      pre hit (%) worst file hit
+k1                 4658         44       2429        22     1766 (33.25)      814 (15.33)         100.0%
+k2                 2814         22       1324        13     1172 (22.07)      528 ( 9.94)         100.0%
+k3                 2300         16       1112        11      911 (17.15)      458 ( 8.62)         100.0%
+k4                 2013         13        985         9      765 (14.40)      415 ( 7.81)         100.0%
+k5                 1836         11        906         8      673 (12.67)      393 ( 7.40)         100.0%
+k10                1480          9        731         7      530 ( 9.98)      331 ( 6.23)         100.0%
+k20                1243          7        604         5      449 ( 8.45)      282 ( 5.31)          99.2%
+pct1               2348         17       1121        11      946 (17.81)      473 ( 8.91)         100.0%
+pct2               1857         11        909         8      687 (12.94)      397 ( 7.48)         100.0%
+pct5               1451          8        713         7      524 ( 9.87)      322 ( 6.06)         100.0%
+pct10              1232          6        595         5      447 ( 8.42)      282 ( 5.31)          99.2%
+dropWorst1         4170         36       2155        21     1599 (30.11)      711 (13.39)         100.0%
+dropWorst2         3853         35       2043        20     1410 (26.55)      672 (12.65)         100.0%
+dropWorst5         3480         30       1926        19     1196 (22.52)      595 (11.20)         100.0%
+dropWorst10        3096         25       1731        17     1031 (19.41)      538 (10.13)         100.0%
+dropWorst20        2693         23       1565        15      845 (15.91)      463 ( 8.72)         100.0%
+(per file = median across files; worst file hit = largest share of a file's post+pre windows losing data)

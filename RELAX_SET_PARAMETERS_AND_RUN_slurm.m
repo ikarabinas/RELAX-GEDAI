@@ -141,7 +141,7 @@ addpath('/home/nga4004/tools/eeglab2026.0.0/plugins/Fieldtrip-lite250523/');
 % https://github.com/sccn/ICLabel
 
 % Specify  RELAX folder location (this toolbox):
-addpath('/home/nga4004/gitRepos/RELAX-GEDAI/.claude/worktrees/gentle-filters/');
+addpath(fileparts(mfilename('fullpath')));
 
 % GEDAI (local fork with boundary handling), used when RELAX_cfg.Run_GEDAI=1:
 % https://github.com/neil-gallagher/GEDAI-master
@@ -496,6 +496,7 @@ RELAX_cfg.ExtremeBlinkShiftThreshold=10; % How many MAD from the median across b
 % threshold, which caters for the fact that blinks don't affect
 % the median, so without this, if data is clean and blinks are
 % large, blinks can get excluded as extreme outliers)
+RELAX_cfg.ExtremeMinBadChannelsToRejectEpoch=20; % An epoch is rejected as extreme only if at least this many channels trip a per-channel criterion above (whole-montage kurtosis still rejects alone). 1 = RELAX's original any-one-channel rule; on this ~200-channel montage that rule rejected 7.4% of evaluated data (median file) vs 0.9% at 20 - see extreme_rejection_survey/summary.txt
 
 % The following selections determine how many epochs of each type of
 % artifact to include in the MWF mask (for if you are applying MWF cleaning).

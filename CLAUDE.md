@@ -118,6 +118,14 @@ resume/accumulate.
    `RejectMuscleChannelsAfterCleaning` and `NumberOfMuscleContaminatedChannelsBeforeCleaning` on
    `RELAXProcessingExtremeRejections`, where `NumberOfMuscleContaminatedChannelsRecomendedToDelete` then
    counts the cleaned data. Comparison tooling: `muscle_deferral_comparison/`.
+   `RELAX_cfg.ExtremeMinBadChannelsToRejectEpoch=k` (absent/1 = RELAX's rule) rejects an epoch in
+   `RELAX_excluding_extreme_values.m` only when at least k channels trip a per-channel criterion
+   (voltage shift, absolute voltage, joint probability, drift); whole-montage kurtosis still rejects
+   alone. On the ~200-channel net the any-one-channel rule mostly condemned epochs on one channel
+   (`extreme_rejection_survey/summary.txt`). Single-channel kurtosis is computed but has never rejected
+   anything, upstream included, and still doesn't. Covariates on `RELAXProcessingExtremeRejections`:
+   `ExtremeMinBadChannelsToRejectEpoch`, `ProportionExcludedIfAnyChannelRejected`,
+   `EpochsKeptWithFlaggedChannels`, `FlaggedChannelEpochsKept` (flagged channel-epochs passed on to ICA/GEDAI).
 7. **Artifact-type marking** — `RELAX_muscle.m`, `RELAX_horizontaleye.m`, `RELAX_drift.m` build
    artifact/clean masks (padded by `RELAX_pad_brief_mask_periods.m`) used both for the MWF template
    and for post-hoc SER/ARR metrics.
