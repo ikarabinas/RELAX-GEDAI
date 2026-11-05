@@ -156,8 +156,12 @@ RELAX_add_vendored_noisetools();  % nt_detrend for RELAX_repair_steps, see vendo
 RELAX_cfg.caploc=[]; % path containing electrode positions. Set to =[] if electrode locations are already in your EEG file.
 
 % Specify the to be processed file locations:
-RELAX_cfg.myPath='/home/nga4004/TMS_response_variability/store/mdd_dlpfc/preprocessed_Oct26/rest_treat_joined/';
-RELAX_cfg.OutputFolderName='RELAXProcessed_gentleFilters'; % output folder inside myPath
+RELAX_cfg.myPath='/home/nga4004/TMS_response_variability/store/mdd_dlpfc/preprocessed_Oct26_2exp/rest_treat_joined/';
+% The ICA comparison runs this script once per ICA method at the same time, so the method
+% comes from the environment (run_relax-gedai_slurm.sh) and names the output folder.
+RELAX_cfg.ICA_method=getenv('RELAX_ICA_METHOD');
+if isempty(RELAX_cfg.ICA_method); RELAX_cfg.ICA_method='picard'; end
+RELAX_cfg.OutputFolderName=['RELAXProcessed_gentlerICA_' RELAX_cfg.ICA_method]; % output folder inside myPath
 
 % Specify whether all data is in a single folder or data are in BIDS format
 % (each EEG file within its own separate folder):
@@ -234,7 +238,7 @@ end
 RELAX_cfg.ParticipantTag = thisParticipant;
 fprintf('Array task %d processing participant: %s (%d files)\n', task_id, thisParticipant, numel(RELAX_cfg.files));
 
-log_file = sprintf('%s/slurm_task_%d.log', RELAX_cfg.myPath, task_id);
+log_file = sprintf('%s/slurm_task_%d_%s.log', RELAX_cfg.myPath, task_id, RELAX_cfg.OutputFolderName);
 fid = fopen(log_file, 'w');
 fprintf(fid, 'Task %d - Participant %s\n', task_id, thisParticipant);
 fprintf(fid, 'Files:\n');
@@ -243,7 +247,7 @@ fclose(fid);
 
 if isempty(RELAX_cfg.files)
     fprintf('Array task %d: participant %s has no unprocessed files remaining. Skipping.\n', task_id, thisParticipant);
-    log_file = sprintf('%s/slurm_task_%d.log', RELAX_cfg.myPath, task_id);
+    log_file = sprintf('%s/slurm_task_%d_%s.log', RELAX_cfg.myPath, task_id, RELAX_cfg.OutputFolderName);
     fid = fopen(log_file, 'w');
     fprintf(fid, 'Task %d - Participant %s - SKIPPED (already fully processed)\n', task_id, thisParticipant);
     fclose(fid);
@@ -459,12 +463,12 @@ RELAX_cfg.Do_MWF_Twice=0; % 1 = Perform the MWF cleaning a second time (1 for ye
 RELAX_cfg.Do_MWF_Thrice=0; % 1 = Perform the MWF cleaning a second time (1 for yes, 0 for no). I think cleaning drift in this is a good idea.
 RELAX_cfg.Perform_wICA_on_ICLabel=0; % 1 = Perform wICA on artifact components marked by ICLabel (1 for yes, 0 for no).
 RELAX_cfg.Perform_ICA_subtract=0; % 1 = Perform ICA subtract on artifact components marked by ICLabel (1 for yes, 0 for no) (non-optimal, intended to be optionally used separately to wICA rather than additionally)
-RELAX_cfg.ICA_method='picard';
 RELAX_cfg.n_ICA_comp='auto'; % Number of ICA components to use (only relevant for PICARD and AMICA)
-RELAX_cfg.Report_all_ICA_info='yes'; % set to yes to provide detailed report of ICLabel artifact information. Runs ~20s slower per file.
+RELAX_cfg.Report_all_wICA_info='yes'; % set to yes to provide detailed report of ICLabel artifact information. Runs ~20s slower per file.
 RELAX_cfg.Clean_other_comps='no'; % set to yes to clean independent components other than blinks and muscle activity
 
-RELAX_cfg.ICLabel_thresholds=[0.5 0.5 0.5 0.5 0.5 0.5 0.5];
+RELAX_cfg.ICLabel_thresholds=[0.5 1 0.5 0.5 0.5 0.5 0.5]; % muscle at 1: muscle subtraction is chosen by spectral slope alone, so no component gets wavelet cleaning just for an ICLabel muscle label
+RELAX_cfg.Compute_wICA_removal_metrics=1; % 1 = record how much of each band wICA removed in muscle and non-muscle epochs (RELAX_wICA_removal_metrics), into the wICA statistics and RELAXProcessed/wICA_removal/
 % e.g. [0.5 0.8 0.8 0.5 0.5 0.5 0.5]; with values specifying comp types in the following order: ['Brain' 'Muscle' 'Eye'	'Heart'	'Line Noise' 'Channel Noise' 'Other']
 % set these to a decimal > 0 if you want components to only be considered as 
 % potential artifacts if ICLabel provides a higher decimal than that for the 

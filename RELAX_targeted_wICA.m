@@ -49,12 +49,15 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
         RELAX_cfg.n_ICA_comp=[];
     end
 
-    % if automatic detection of the number of ICA components to use is enabled, set it to the default value of sqrt(n_samples/30) (rounded down to the nearest integer), but not exceeding the number of channels in the EEG data.
+    % 'auto' keeps sqrt(n_samples/60) components (rounded down, at most the channel count): the
+    % most that still passes the data-length check below at 500 Hz (n^2 * 60 samples). The
+    % previous sqrt(n_samples/30) always failed that check, leaving too few samples per
+    % component to separate brain from muscle.
     if ~isempty(RELAX_cfg.n_ICA_comp) && ~strcmp(RELAX_cfg.ICA_method, 'picard') && ~strcmp(RELAX_cfg.ICA_method, 'amica')
         error('Setting the number of ICA components is only supported for PICARD and AMICA.');
     end
     if ischar(RELAX_cfg.n_ICA_comp) && strcmp(RELAX_cfg.n_ICA_comp, 'auto')
-        RELAX_cfg.n_ICA_comp = floor(sqrt(EEG.pnts/30));
+        RELAX_cfg.n_ICA_comp = floor(sqrt(EEG.pnts/60));
         RELAX_cfg.n_ICA_comp = min(RELAX_cfg.n_ICA_comp, EEG.nbchan);
     elseif isempty(RELAX_cfg.n_ICA_comp) || RELAX_cfg.n_ICA_comp > EEG.nbchan
         RELAX_cfg.n_ICA_comp = EEG.nbchan;
@@ -127,20 +130,29 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
         if ~exist(amica_file)
             disp('!! AMICA directory not found, please ensure you have AMICA installed !!');
         end
-        [filepath,~,~] = fileparts(amica_file);
-        cd(filepath);
+        % runamica15 writes its data copy into pwd and its model into outdir. Both live in a
+        % private temporary folder: a shared one in the plugin directory let concurrent SLURM
+        % array tasks read each other's weights.
+        amicaWorkDir = tempname;
+        mkdir(amicaWorkDir);
+        previousDir = cd(amicaWorkDir);
+        restoreDir = onCleanup(@() cd(previousDir));
+        removeWorkDir = onCleanup(@() rmdir(amicaWorkDir, 's'));
         % define parameters
         numprocs = 1;       % # of nodes (default = 1)
         max_threads = 4;    % # of threads per node
         num_models = 1;     % # of models of mixture ICA
         max_iter = 2000;    % max number of learning steps
-        mkdir([filepath filesep 'AMICAtmp']);
-        outdir = [filepath filesep 'AMICAtmp' filesep];
+        outdir = [amicaWorkDir filesep 'out' filesep];
         % Run AMICA:    
         [EEG_with_ICA.icaweights, EEG_with_ICA.icasphere, ~] = runamica15(EEG_with_ICA.data, 'num_chans', EEG.nbchan, 'num_models',num_models,'outdir',outdir,'numprocs', numprocs, 'max_threads', max_threads, 'max_iter',max_iter,'pcakeep', RELAX_cfg.n_ICA_comp, 'do_reject', 1, 'numrej', 15, 'rejsig', 3, 'rejint', 1);
+        clear restoreDir removeWorkDir
         W = EEG_with_ICA.icaweights*EEG_with_ICA.icasphere;
         % A = inv(W);
-        EEG_with_ICA = eeg_checkset(EEG_with_ICA, 'ica'); 
+        EEG_with_ICA.icachansind = 1:EEG.nbchan;
+        EEG_with_ICA.icawinv = [];
+        EEG_with_ICA.icaact = [];
+        EEG_with_ICA = eeg_checkset(EEG_with_ICA, 'ica');
         A = EEG_with_ICA.icawinv;
         if isempty(EEG_with_ICA.icaact)==1
             EEG_with_ICA.icaact = (EEG_with_ICA.icaweights*EEG_with_ICA.icasphere)*EEG_with_ICA.data(EEG_with_ICA.icachansind,:);      
@@ -173,62 +185,20 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
     end
     ICsMostLikelyEye=(I==3)';
 
-    options.muscleFreqIn=[12,70];
-    options.Freq_to_compute = [1,100];
-
-    % Calculate pwelch to enable detection of log-freq log-power slopes
-    % indicative of muscle activity
-    % Resize EEG.icaact if required
-    if size(EEG_with_ICA.icaact,3) > 0
-        eegData = reshape(EEG_with_ICA.icaact,size(EEG_with_ICA.icaact,1),[]);
+    % Spectra are fitted within each stretch of contiguous data, so the steps where boundaries
+    % splice unrelated moments together do not steepen the slope and hide muscle components.
+    if isfield(RELAX_cfg,'RespectBoundaries') && RELAX_cfg.RespectBoundaries
+        muscleRatio = RELAX_IC_muscle_slopes(EEG_with_ICA.icaact, EEG_with_ICA.srate, RELAX_cfg.LineNoiseFrequency, RELAX_get_segments(EEG_with_ICA));
     else
-        eegData = EEG_with_ICA.icaact;
-    end
-    [pxx,fp] = pwelch(eegData',size(eegData,2),[],size(eegData,2),EEG_with_ICA.srate);
-    FFTout = pxx';
-    fp = fp';
-    
-    % Calculate FFT bins
-    freq=options.Freq_to_compute(1,1):0.5:options.Freq_to_compute(1,2);
-    fftBins = zeros(size(FFTout,1),size(freq,2)); %preallocate
-    for a=1:size(freq,2)
-        [~, index1]=min(abs(fp-((freq(1,a)-0.25))));
-        [~, index2]=min(abs(fp-((freq(1,a)+0.25))));
-        fftBins(:,a)=mean(FFTout(:,index1:index2),2); %creates bins for 0.5 Hz in width centred around whole frequencies (i.e. 0.5, 1, 1.5 Hz etc)
-    end
-
-    %% better muscle comp_number identification:
-    comps=size(EEG_with_ICA.icaact,1);
-    options.muscleFreqEx=[RELAX_cfg.LineNoiseFrequency-6 RELAX_cfg.LineNoiseFrequency+6];
-    for compNum =1:comps
-        % Define frequencies to include in the analysis
-        if ~isempty(options.muscleFreqIn)
-            [~,fin1] = min(abs(options.muscleFreqIn(1) - freq));
-            [~,fin2] = min(abs(options.muscleFreqIn(2) - freq));
-            freqHz = freq(1,fin1:fin2);
-            freqPow = fftBins(compNum,fin1:fin2);
-        else
-            freqHz = freq;
-            freqPow = fftBins(compNum,:);
-        end
-        % Define frequencies to exclude from fit
-        if ~isempty(options.muscleFreqEx)
-            [~,fex1] = min(abs(options.muscleFreqEx(1) - freqHz));
-            [~,fex2] = min(abs(options.muscleFreqEx(2) - freqHz));
-            freqHz(fex1:fex2) = [];
-            freqPow(fex1:fex2) = [];
-        end
-        % Fit linear regression to log-log data
-        p = polyfit(log(freqHz),log(freqPow),1);
-        % Store the slope
-        muscleRatio(compNum) = p(1);
+        muscleRatio = RELAX_IC_muscle_slopes(EEG_with_ICA.icaact, EEG_with_ICA.srate, RELAX_cfg.LineNoiseFrequency);
     end
     muscle_ICs=muscleRatio>=RELAX_cfg.MuscleSlopeThreshold;
     ICsMostLikelyMuscle=(muscle_ICs==1);
 
     % use icablinkmetrics to double check for blink components that ICLabel
     % might have missed:
-    if exist('icablinkmetrics', 'file') == 2
+    EEG.RELAXProcessing_wICA.BlinkMetricsRan = exist('icablinkmetrics', 'file') == 2;
+    if EEG.RELAXProcessing_wICA.BlinkMetricsRan
         EEG_all_electrodes = pop_interp(EEG, EEG.allchan, 'spherical');
         electrode_labels={EEG_all_electrodes.chanlocs.labels};
         Blink_Electrode_location=find(strcmpi(electrode_labels,RELAX_cfg.BlinkElectrodes(1,1)));
@@ -413,6 +383,13 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
     end
     
     EEG.RELAXProcessing_wICA.Proportion_artifactICs_reduced_by_wICA=mean(ICsMostLikelyNotBrain);
+    % The muscle subtraction is chosen by spectral slope, not by ICLabel, so the ICLabel-based
+    % proportions reported below do not describe it.
+    EEG.RELAXProcessing_wICA.NumberOfICs=size(Component,1);
+    EEG.RELAXProcessing_wICA.Proportion_ICs_muscle_by_slope=mean(ICsMostLikelyMuscle);
+    muscleSubtraction=A(:,ICsMostLikelyMuscle)*artifact_comp(ICsMostLikelyMuscle,:);
+    EEG.RELAXProcessing_wICA.Proportion_power_removed_by_muscle_subtraction=sum(muscleSubtraction(:).^2)/sum(double(Original_EEG(:)).^2);
+    clear muscleSubtraction
     
     % Save ICA fields into the main EEG structure for later access
     EEG.icaweights  = EEG_with_ICA.icaweights;
@@ -421,6 +398,8 @@ function [EEG] = RELAX_targeted_wICA(EEG,RELAX_cfg)
     EEG.icachansind = EEG_with_ICA.icachansind;
     EEG.icaact      = EEG_with_ICA.icaact;
     EEG.etc.ic_classification = EEG_with_ICA.etc.ic_classification;
+    EEG.etc.ic_muscle_slope.slopes = muscleRatio';
+    EEG.etc.ic_muscle_slope.threshold = RELAX_cfg.MuscleSlopeThreshold;
     
     
     
