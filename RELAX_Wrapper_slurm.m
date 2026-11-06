@@ -911,6 +911,18 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     end
     [continuousEEG, epochedEEG] = RELAX_excluding_extreme_values(continuousEEG, epochedEEG, RELAX_cfg); % Mark extreme periods for exclusion from MWF cleaning, and deletion before wICA cleaning
 
+    % The first pass's per-channel statistics, fixed here so the second pass after cleaning
+    % judges the cleaned data by the same standard. Fitted on all first-pass epochs,
+    % average-referenced to match the cleaned data.
+    if ~isfield(RELAX_cfg,'InterpolateExtremeChannelEpochsAfterCleaning'); RELAX_cfg.InterpolateExtremeChannelEpochsAfterCleaning = 0; end
+    LockedExtremeThresholds = [];
+    if RELAX_cfg.InterpolateExtremeChannelEpochsAfterCleaning==1
+        FirstPassData = double(epochedEEG.data);
+        LockedExtremeThresholds = RELAX_lock_extreme_thresholds(FirstPassData - mean(FirstPassData, 1), ...
+            {epochedEEG.chanlocs.labels}, RELAX_cfg);
+        clear FirstPassData
+    end
+
     % Use the continuous data to detect eye blinks and mark
     % these in the EEG.event as well as in the mask. The output is
     % continuous data but includes all the previous extreme period 
@@ -1405,7 +1417,20 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
         RELAXProcessingExtremeRejectionsAllParticipants = RELAX_append_table_row( ...
             RELAXProcessingExtremeRejectionsAllParticipants, FileNumber, struct2table(ExtremeRejections,'AsArray',true));
     end
-      
+
+    %% Second extreme pass on the cleaned data:
+    % Channel-epochs still extreme by the first pass's standard are replaced by a spherical
+    % spline of the epoch's other channels (RELAX_second_pass_channel_epochs). Always called,
+    % so the setting and its NaN counts are recorded when it is off.
+    [EEG, SecondPassResult] = RELAX_second_pass_channel_epochs(EEG, LockedExtremeThresholds, RELAX_cfg);
+    clear LockedExtremeThresholds
+    for SecondPassField = fieldnames(SecondPassResult)'
+        EEG.RELAXProcessingExtremeRejections.(SecondPassField{1}) = SecondPassResult.(SecondPassField{1});
+        ExtremeRejections.(SecondPassField{1}) = SecondPassResult.(SecondPassField{1});
+    end
+    RELAXProcessingExtremeRejectionsAllParticipants = RELAX_append_table_row( ...
+        RELAXProcessingExtremeRejectionsAllParticipants, FileNumber, struct2table(ExtremeRejections,'AsArray',true));
+
     %% COMPUTE CLEANED METRICS:
     if RELAX_cfg.computecleanedmetrics==1    
         [continuousEEG, epochedEEG] = RELAX_epoching(EEG, RELAX_cfg);

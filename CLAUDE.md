@@ -126,6 +126,21 @@ resume/accumulate.
    anything, upstream included, and still doesn't. Covariates on `RELAXProcessingExtremeRejections`:
    `ExtremeMinBadChannelsToRejectEpoch`, `ProportionExcludedIfAnyChannelRejected`,
    `EpochsKeptWithFlaggedChannels`, `FlaggedChannelEpochsKept` (flagged channel-epochs passed on to ICA/GEDAI).
+   `RELAX_cfg.InterpolateExtremeChannelEpochsAfterCleaning=1` (`RELAX_Wrapper_slurm.m` only, absent/0 =
+   off) repairs the flagged channel-epochs those kept epochs carry into the cleaned data. Right after
+   the first pass, `RELAX_lock_extreme_thresholds.m` fixes each channel's statistics from all
+   first-pass epochs, average-referenced: the shift bound without the blink-aware bound, the
+   joint-probability histogram, and the kurtosis mean and SD. After the deferred muscle screen and
+   before the cleaned metrics, `RELAX_second_pass_channel_epochs.m` re-epochs the cleaned data the same
+   way and flags channel-epochs by shift, absolute voltage, joint probability (improbable side only),
+   drift and single-channel kurtosis (z > 10). It replaces each flagged channel over its whole 1 s
+   epoch with a spherical spline of the epoch's other channels, blended over 0.25 s inside each edge.
+   An epoch with more than `SecondPassMaxProportionFlaggedChannels` (0.20) of its channels flagged
+   raises `RELAX:secondPassTooManyFlaggedChannels`. Covariates: `InterpolateExtremeChannelEpochsAfterCleaning`,
+   `SecondPassEpochsEvaluated`, `SecondPassEpochsWithInterpolatedChannels`,
+   `SecondPassChannelEpochsInterpolated`, `SecondPassProportionChannelTimeInterpolated`,
+   `SecondPassFlaggedBy<ShiftHigh|ShiftLow|AbsVolt|JointProb|Drift|Kurtosis>` (NaN while off). Design:
+   `docs/superpowers/specs/2026-11-06-post-cleaning-channel-epoch-interpolation-design.md`.
 7. **Artifact-type marking** — `RELAX_muscle.m`, `RELAX_horizontaleye.m`, `RELAX_drift.m` build
    artifact/clean masks (padded by `RELAX_pad_brief_mask_periods.m`) used both for the MWF template
    and for post-hoc SER/ARR metrics.
