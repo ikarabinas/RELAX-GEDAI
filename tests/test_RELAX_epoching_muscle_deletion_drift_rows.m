@@ -17,6 +17,17 @@ function test_RELAX_epoching_muscle_deletion_drift_rows()
             '%s: drift slopes have %d rows for %d channels after muscle deletion', name, ...
             size(epochedEEG.RELAXProcessing.Details.DriftRatioEpochsxChannels, 1), epochedEEG.nbchan);
         RELAX_excluding_extreme_values(continuousEEG, epochedEEG, cfg);
+
+        % Over budget: E7 and E8 are identical white noise but only 1 channel may go, so
+        % the >= pass picks 2, and the fallback restores and reruns with > (picking none).
+        [EEG, cfg] = fixture();
+        EEG.data(7, :) = EEG.data(8, :);
+        cfg.MaxProportionOfElectrodesThatCanBeDeleted = 0.125;
+        [continuousEEG, epochedEEG] = variant{1}(EEG, cfg);
+        assert(size(epochedEEG.RELAXProcessing.Details.DriftRatioEpochsxChannels, 1) == epochedEEG.nbchan, ...
+            '%s, over-budget fallback: drift slopes have %d rows for %d channels', name, ...
+            size(epochedEEG.RELAXProcessing.Details.DriftRatioEpochsxChannels, 1), epochedEEG.nbchan);
+        RELAX_excluding_extreme_values(continuousEEG, epochedEEG, cfg);
     end
     fprintf('test_RELAX_epoching_muscle_deletion_drift_rows: PASS\n');
 end

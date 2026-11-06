@@ -440,6 +440,7 @@ function [continuousEEG, epochedEEG] = RELAX_excluding_channels_and_epoching_iTB
             if epochedEEG.RELAXProcessing.Details.NumberOfMuscleContaminatedChannelsRecomendedToDelete > 0
                 Backup.MuscleSlopesEpochsxChannels=epochedEEG.RELAXProcessing.Details.MuscleSlopesEpochsxChannels; % Take backup of these variables in case they're needed below
                 Backup.Muscle_Slopes=epochedEEG.RELAXProcessing.Details.Muscle_Slopes;
+                Backup.DriftRatioEpochsxChannels=epochedEEG.RELAXProcessing.Details.DriftRatioEpochsxChannels;
                 for x=1:size(epochedEEG.chanlocs,2)
                     if epochedEEG.RELAXProcessing.Details.ProportionOfEpochsShowingMuscleAboveThresholdPerChannel(x,1)>=ProportionOfMuscleContaminatedEpochsAboveWhichToRejectChannel % If the electrode shows equal to or more muscle contaminated epochs than the threshold...
                         epochedEEG.RELAXProcessing.Details.MuscleBasedElectrodesToReject{x,1}=epochedEEG.chanlocs(x).labels; % Mark the electrode for deletion
@@ -457,6 +458,7 @@ function [continuousEEG, epochedEEG] = RELAX_excluding_channels_and_epoching_iTB
                     epochedEEG.RELAXProcessing.Details.MuscleBasedElectrodesToReject={};
                     epochedEEG.RELAXProcessing.Details.MuscleSlopesEpochsxChannels=Backup.MuscleSlopesEpochsxChannels;
                     epochedEEG.RELAXProcessing.Details.Muscle_Slopes=Backup.Muscle_Slopes;
+                    epochedEEG.RELAXProcessing.Details.DriftRatioEpochsxChannels=Backup.DriftRatioEpochsxChannels;
                     for x=1:size(epochedEEG.chanlocs,2)
                         if epochedEEG.RELAXProcessing.Details.ProportionOfEpochsShowingMuscleAboveThresholdPerChannel(x,1)>ProportionOfMuscleContaminatedEpochsAboveWhichToRejectChannel % If the electrode shows more muscle contaminated epochs than the threshold...
                             epochedEEG.RELAXProcessing.Details.MuscleBasedElectrodesToReject{x,1}=epochedEEG.chanlocs(x).labels; % Mark the electrode for deletion
