@@ -413,6 +413,7 @@ function [continuousEEG, epochedEEG] = RELAX_excluding_channels_and_epoching(con
                 end
                 epochedEEG.RELAXProcessing.Details.MuscleSlopesEpochsxChannels(epochedEEG.RELAXProcessing.Details.ProportionOfEpochsShowingMuscleAboveThresholdPerChannel>=ProportionOfMuscleContaminatedEpochsAboveWhichToRejectChannel,:)=[]; % If electrode is deleted, remove it's data from this variable
                 epochedEEG.RELAXProcessing.Details.Muscle_Slopes(:,epochedEEG.RELAXProcessing.Details.ProportionOfEpochsShowingMuscleAboveThresholdPerChannel>=ProportionOfMuscleContaminatedEpochsAboveWhichToRejectChannel,:)=[]; % If electrode is deleted, remove it's data from this variable
+                epochedEEG.RELAXProcessing.Details.DriftRatioEpochsxChannels(epochedEEG.RELAXProcessing.Details.ProportionOfEpochsShowingMuscleAboveThresholdPerChannel>=ProportionOfMuscleContaminatedEpochsAboveWhichToRejectChannel,:)=[]; % drift slopes are per channel too, and RELAX_excluding_extreme_values matches them to channels by row
                 epochedEEG.RELAXProcessing.Details.MuscleBasedElectrodesToReject = epochedEEG.RELAXProcessing.Details.MuscleBasedElectrodesToReject(~any(cellfun('isempty', epochedEEG.RELAXProcessing.Details.MuscleBasedElectrodesToReject), 2), :);
                 % Using >= the threshold in the above section can sometimes lead to more
                 % electrodes being rejected than the threshold. The
@@ -429,6 +430,7 @@ function [continuousEEG, epochedEEG] = RELAX_excluding_channels_and_epoching(con
                     end
                     epochedEEG.RELAXProcessing.Details.MuscleSlopesEpochsxChannels(epochedEEG.RELAXProcessing.Details.ProportionOfEpochsShowingMuscleAboveThresholdPerChannel>ProportionOfMuscleContaminatedEpochsAboveWhichToRejectChannel,:)=[]; % If electrode is deleted, remove it's data from this variable
                     epochedEEG.RELAXProcessing.Details.Muscle_Slopes(:,epochedEEG.RELAXProcessing.Details.ProportionOfEpochsShowingMuscleAboveThresholdPerChannel>ProportionOfMuscleContaminatedEpochsAboveWhichToRejectChannel,:)=[]; % If electrode is deleted, remove it's data from this variable
+                    epochedEEG.RELAXProcessing.Details.DriftRatioEpochsxChannels(epochedEEG.RELAXProcessing.Details.ProportionOfEpochsShowingMuscleAboveThresholdPerChannel>ProportionOfMuscleContaminatedEpochsAboveWhichToRejectChannel,:)=[]; % drift slopes are per channel too, and RELAX_excluding_extreme_values matches them to channels by row
                 end
                 epochedEEG.RELAXProcessing.Details.MuscleBasedElectrodesToReject = epochedEEG.RELAXProcessing.Details.MuscleBasedElectrodesToReject(~any(cellfun('isempty', epochedEEG.RELAXProcessing.Details.MuscleBasedElectrodesToReject), 2), :);
                 epochedEEG=pop_select(epochedEEG,'nochannel',epochedEEG.RELAXProcessing.Details.MuscleBasedElectrodesToReject);  % Delete electrodes from epoched data that have been marked as showing more than the threshold number of epochs contaminated by muscle activity
