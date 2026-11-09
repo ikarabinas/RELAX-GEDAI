@@ -1,4 +1,4 @@
-% RELAX_reflect_pad() - Odd (antisymmetric) reflection padding about the edge samples.
+% RELAX_reflect_pad() - Even (mirror) reflection padding about the edge samples.
 %
 % Usage:
 %   >> padded = RELAX_reflect_pad(x, p);
@@ -10,11 +10,14 @@
 % Outputs:
 %   padded - [nChannels x (nSamples + 2*p)] data
 %
-% Uses odd reflection, 2*x(edge) - flip(interior), which is the convention
-% filtfilt applies internally. Even (mirror) reflection would place a cusp at the
-% segment edge that a high pass filter then rings on; odd reflection continues the
-% local trend across the edge instead, which matters here because the segments
-% between boundary events are only ~8 s long.
+% Mirrors the interior about each edge sample, flip(interior), without repeating it.
+% Not the odd reflection filtfilt applies internally, 2*x(edge) - flip(interior): that
+% sets the pad's level from the single edge sample, so when the edge sample is far from
+% the local level (mains at an arbitrary phase, or a residual TMS spike at a segment
+% start) the pad is offset by twice that distance, and a high-pass rings on the step for
+% hundreds of ms into the segment. Even reflection keeps the pad at the local level at
+% the cost of a slope cusp at the edge. Measurement (m468, 0.5 Hz high-pass):
+% TMS_response_variability implementation_notes/decay/line-noise-nuisance.md.
 
 function padded = RELAX_reflect_pad(x, p)
 
@@ -26,7 +29,7 @@ function padded = RELAX_reflect_pad(x, p)
         return
     end
 
-    leftPad  = 2*x(:,1)   - x(:, p+1:-1:2);
-    rightPad = 2*x(:,end) - x(:, end-1:-1:end-p);
+    leftPad  = x(:, p+1:-1:2);
+    rightPad = x(:, end-1:-1:end-p);
     padded = [leftPad, x, rightPad];
 end

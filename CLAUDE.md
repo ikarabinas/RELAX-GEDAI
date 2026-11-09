@@ -215,7 +215,7 @@ vendored commit. `vendor/noisetools/` is a deliberately partial mirror.
 
 The TMS-EEG inputs contain `boundary` events marking periods excised by TMS artifact removal, leaving
 ~8 s of continuous data between them. `RELAX_cfg.RespectBoundaries=1` processes each inter-boundary
-segment independently, with odd reflection padding at each edge. Design:
+segment independently, with even (mirror) reflection padding at each edge. Design:
 `docs/superpowers/specs/2026-09-08-boundary-aware-preprocessing-design.md`.
 
 Helpers: `RELAX_get_segments.m` (segment list from `EEG.event`), `RELAX_reflect_pad.m`,

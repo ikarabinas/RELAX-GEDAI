@@ -5,7 +5,7 @@ function out = zapline_filter_by_segments(data, segments, fn, padWidth, minSegme
 %                       array is never transposed: it can be 257 x 245000 doubles.
 %   segments          - [nSegments x 2] from zapline_boundary_segments
 %   fn                - function handle taking and returning [nSamples x nChannels]
-%   padWidth          - odd-reflection pad in samples applied to each end of a segment,
+%   padWidth          - reflection pad in samples applied to each end of a segment,
 %                       clamped to segLen-1. One filter order is enough: an FIR of
 %                       order N cannot see further than N samples.
 %   minSegmentSamples - segments shorter than this are copied through UNCHANGED with a
@@ -14,7 +14,7 @@ function out = zapline_filter_by_segments(data, segments, fn, padWidth, minSegme
 %
 %   out               - [nSamples x nChannels], same size as data.
 %
-% Odd reflection is delegated to RELAX_reflect_pad, which works in [nChannels x nSamples],
+% Reflection is delegated to RELAX_reflect_pad, which works in [nChannels x nSamples],
 % so only one segment at a time is transposed. The vendored tree is only ever reached
 % through RELAX_add_vendored_zapline(), so that function is always on the path.
 %
