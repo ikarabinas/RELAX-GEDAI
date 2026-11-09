@@ -7,7 +7,8 @@ function test_RELAX_epoching_muscle_deletion_drift_rows()
 % Fixture: 60 s of pink noise on 8 channels; E8 is white noise, whose flat spectrum the
 % muscle screen reads as muscle in every epoch.
 
-    for variant = {@RELAX_excluding_channels_and_epoching_boundary, @RELAX_excluding_channels_and_epoching}
+    for variant = {@RELAX_excluding_channels_and_epoching_boundary, @RELAX_excluding_channels_and_epoching, ...
+            @RELAX_excluding_channels_and_epoching_iTBS}
         [EEG, cfg] = fixture();
         [continuousEEG, epochedEEG] = variant{1}(EEG, cfg);
         name = func2str(variant{1});

@@ -18,7 +18,8 @@ function test_RELAX_second_pass_channel_epochs()
         assert(isequal(out.data, EEG.data), 'the stage changed data while off');
         assert(cov.InterpolateExtremeChannelEpochsAfterCleaning == 0, 'the off setting was not recorded as 0');
         assert(isnan(cov.SecondPassChannelEpochsInterpolated) && isnan(cov.SecondPassEpochsEvaluated) ...
-            && isnan(cov.SecondPassFlaggedByKurtosis), 'counts should be NaN while off');
+            && isnan(cov.SecondPassFlaggedByKurtosis) && isnan(cov.SecondPassChannelEpochsNotRepaired), ...
+            'counts should be NaN while off');
     end
 
     cfg.InterpolateExtremeChannelEpochsAfterCleaning = 1;
@@ -60,6 +61,50 @@ function test_RELAX_second_pass_channel_epochs()
     assert(max(abs(out.data(6, spikeSamples))) < 100, 'with E3 removed, the spike on E7 was not repaired');
     assert(cov.SecondPassEpochsEvaluated == epochs, 'epoch count changed with a channel removed');
 
+    % blink: a blink-sized deflection is held to the plain first-pass shift bound even where
+    % the cleaned data carry blink events (no blink exemption)
+    spiked = EEG;
+    blinkSamples = 30 * EEG.srate + (1:100);
+    spiked.data(7, blinkSamples) = spiked.data(7, blinkSamples) + 600 * sin(pi * (1:100) / 100);
+    spiked.event(end + 1).type = 'EyeBlinkMax';
+    spiked.event(end).latency = 30 * EEG.srate + 50;
+    spiked.event(end).duration = 0;
+    spiked = eeg_checkset(spiked, 'eventconsistency');
+    [out, cov] = RELAX_second_pass_channel_epochs(spiked, locked, cfg);
+    assert(cov.SecondPassFlaggedByShiftHigh >= 1, 'the blink-sized shift was not flagged by the shift bound');
+    assert(max(abs(out.data(7, blinkSamples))) < 150, 'the blink-sized shift survived: peak %.0f uV', ...
+        max(abs(out.data(7, blinkSamples))));
+
+    % plain_epoching: with RespectBoundaries = 0 the first pass used the fixed 0.5 s grid,
+    % which drops the epoch straddling a boundary at 20.4 s and so never sees the 0.4 s
+    % before it; the second pass must epoch the same way, while boundary-aware tiling
+    % covers that stretch
+    offGrid = EEG;
+    offGrid.event(1).latency = 5100.5;
+    offGrid.data(7, 5060:5075) = offGrid.data(7, 5060:5075) + 400;
+    out = RELAX_second_pass_channel_epochs(offGrid, locked, cfg);
+    assert(any(out.data(7, 5060:5075) ~= offGrid.data(7, 5060:5075)), ...
+        'boundary-aware epoching did not repair the spike just before the boundary');
+    plainCfg = cfg;
+    plainCfg.RespectBoundaries = 0;
+    [~, plainEpoched] = RELAX_excluding_channels_and_epoching(offGrid, plainCfg);
+    [out, cov] = RELAX_second_pass_channel_epochs(offGrid, locked, plainCfg);
+    assert(cov.SecondPassEpochsEvaluated == plainEpoched.trials, ...
+        'with RespectBoundaries = 0 the second pass evaluated %d epochs, the fixed-grid epoching %d', ...
+        cov.SecondPassEpochsEvaluated, plainEpoched.trials);
+    assert(isequal(out.data(7, 5060:5075), offGrid.data(7, 5060:5075)), ...
+        'with RespectBoundaries = 0 the second pass repaired data the fixed grid never epochs');
+
+    % no_coordinates: a flagged channel that cannot be interpolated is counted apart
+    noLocs = EEG;
+    noLocs.data(7, spikeSamples) = noLocs.data(7, spikeSamples) + 400;
+    [noLocs.chanlocs(7).theta, noLocs.chanlocs(7).radius, noLocs.chanlocs(7).X, noLocs.chanlocs(7).Y, noLocs.chanlocs(7).Z] = deal([]);
+    [out, cov] = RELAX_second_pass_channel_epochs(noLocs, locked, cfg);
+    assert(isequal(out.data, noLocs.data), 'data changed although the only flagged channel has no location');
+    assert(cov.SecondPassChannelEpochsInterpolated == 0 && cov.SecondPassEpochsWithInterpolatedChannels == 0 ...
+        && cov.SecondPassProportionChannelTimeInterpolated == 0, 'an unrepaired channel-epoch was counted as interpolated');
+    assert(cov.SecondPassChannelEpochsNotRepaired >= 1, 'the flagged channel without a location was not counted as not repaired');
+
     fprintf('test_RELAX_second_pass_channel_epochs: PASS\n');
 end
 
@@ -88,6 +133,7 @@ function [EEG, cfg] = fixture()
     cfg.ProportionOfMuscleContaminatedEpochsAboveWhichToRejectChannel = 1;
     cfg.MaxProportionOfElectrodesThatCanBeDeleted = 0;
     cfg.ProbabilityDataHasNoBlinks = 2;
+    cfg.RespectBoundaries = 1;
 end
 
 function locked = lock_from(EEG, cfg)

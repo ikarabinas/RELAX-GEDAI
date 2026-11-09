@@ -132,13 +132,14 @@ resume/accumulate.
    first-pass epochs, average-referenced: the shift bound without the blink-aware bound, the
    joint-probability histogram, and the kurtosis mean and SD. After the deferred muscle screen and
    before the cleaned metrics, `RELAX_second_pass_channel_epochs.m` re-epochs the cleaned data the same
-   way and flags channel-epochs by shift, absolute voltage, joint probability (improbable side only),
+   way (boundary-aware or fixed grid, following `RespectBoundaries`) and flags channel-epochs by shift, absolute voltage, joint probability (improbable side only),
    drift and single-channel kurtosis (z > 10). It replaces each flagged channel over its whole 1 s
-   epoch with a spherical spline of the epoch's other channels, blended over 0.25 s inside each edge.
+   epoch with a spherical spline of the epoch's other channels, blended over 0.25 s inside each edge;
+   a flagged channel without a location is left alone and counted in `SecondPassChannelEpochsNotRepaired`.
    An epoch with more than `SecondPassMaxProportionFlaggedChannels` (0.20) of its channels flagged
    raises `RELAX:secondPassTooManyFlaggedChannels`. Covariates: `InterpolateExtremeChannelEpochsAfterCleaning`,
    `SecondPassEpochsEvaluated`, `SecondPassEpochsWithInterpolatedChannels`,
-   `SecondPassChannelEpochsInterpolated`, `SecondPassProportionChannelTimeInterpolated`,
+   `SecondPassChannelEpochsInterpolated`, `SecondPassProportionChannelTimeInterpolated`, `SecondPassChannelEpochsNotRepaired`,
    `SecondPassFlaggedBy<ShiftHigh|ShiftLow|AbsVolt|JointProb|Drift|Kurtosis>` (NaN while off). Design:
    `docs/superpowers/specs/2026-11-06-post-cleaning-channel-epoch-interpolation-design.md`.
 7. **Artifact-type marking** — `RELAX_muscle.m`, `RELAX_horizontaleye.m`, `RELAX_drift.m` build

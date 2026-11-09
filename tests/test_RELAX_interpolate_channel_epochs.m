@@ -47,6 +47,20 @@ function test_RELAX_interpolate_channel_epochs()
     out = RELAX_interpolate_channel_epochs(EEG, flagged, onsets, epochSamples, 0.25);
     assert(isa(out.data, 'single'), 'single data came back as %s', class(out.data));
 
+    % no_coordinates: a flagged channel without a location cannot be interpolated, so it is
+    % left alone and reported as not repaired; the located one beside it is still repaired
+    EEG = zero_fixture();
+    EEG.data([5 9], 201:300) = 100;
+    [EEG.chanlocs(9).theta, EEG.chanlocs(9).radius, EEG.chanlocs(9).X, EEG.chanlocs(9).Y, EEG.chanlocs(9).Z] = deal([]);
+    flagged = false(32, numel(onsets));
+    flagged([5 9], 5) = true;
+    [out, changed, repaired] = RELAX_interpolate_channel_epochs(EEG, flagged, onsets, epochSamples, 0.25);
+    assert(isequal(out.data(9, :), EEG.data(9, :)) && ~any(changed(9, :)), 'a channel without a location changed');
+    assert(max(abs(out.data(5, 226:275))) < 1e-9, 'the located flagged channel was not repaired');
+    expectedRepaired = false(32, numel(onsets));
+    expectedRepaired(5, 5) = true;
+    assert(isequal(repaired, expectedRepaired), 'repaired is not exactly the located flagged channel-epoch');
+
     % nothing_flagged
     [out, changed] = RELAX_interpolate_channel_epochs(EEG, false(32, numel(onsets)), onsets, epochSamples, 0.25);
     assert(isequal(out.data, EEG.data) && ~any(changed, 'all'), 'nothing flagged, yet something changed');

@@ -917,10 +917,8 @@ for FileNumber=RELAX_cfg.FilesToProcess(1,1:size(RELAX_cfg.FilesToProcess,2))
     if ~isfield(RELAX_cfg,'InterpolateExtremeChannelEpochsAfterCleaning'); RELAX_cfg.InterpolateExtremeChannelEpochsAfterCleaning = 0; end
     LockedExtremeThresholds = [];
     if RELAX_cfg.InterpolateExtremeChannelEpochsAfterCleaning==1
-        FirstPassData = double(epochedEEG.data);
-        LockedExtremeThresholds = RELAX_lock_extreme_thresholds(FirstPassData - mean(FirstPassData, 1), ...
+        LockedExtremeThresholds = RELAX_lock_extreme_thresholds(epochedEEG.data - mean(epochedEEG.data, 1, 'double'), ...
             {epochedEEG.chanlocs.labels}, RELAX_cfg);
-        clear FirstPassData
     end
 
     % Use the continuous data to detect eye blinks and mark

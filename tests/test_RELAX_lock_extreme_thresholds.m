@@ -55,6 +55,18 @@ function test_RELAX_lock_extreme_thresholds()
     assert(singleDiff < 0.25, 'single-precision data score differently: max |z diff| %.3g', singleDiff);
     assert(isa(sSingle.jpZ, 'double'), 'scores should be double');
 
+    % flat_channel: a channel with no spread in the first pass cannot be judged by joint
+    % probability or kurtosis (ShiftLow judges it), so its z is 0, never NaN
+    flatData = EEG.data;
+    flatData(4, :, :) = 5;
+    flatLocked = RELAX_lock_extreme_thresholds(flatData, labels, cfg);
+    for later = {flatData, EEG.data}
+        sFlat = RELAX_score_locked_extremes(flatLocked, later{1}, labels);
+        assert(all(sFlat.jpZ(4, :) == 0) && all(sFlat.kurtZ(4, :) == 0), ...
+            'a channel flat across the first pass did not score z = 0');
+        assert(all(isfinite(sFlat.jpZ([1:3 5:8], :)), 'all'), 'the flat channel disturbed the others');
+    end
+
     fprintf('test_RELAX_lock_extreme_thresholds: PASS\n');
 end
 

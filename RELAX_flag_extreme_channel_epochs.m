@@ -5,7 +5,8 @@ function flags = RELAX_flag_extreme_channel_epochs(scores, driftSlopes, onsetSec
 %
 % An epoch with more than RELAX_cfg.SecondPassMaxProportionFlaggedChannels (absent = 0.20)
 % of its channels flagged should not have survived the first pass, so it is an error
-% (RELAX:secondPassTooManyFlaggedChannels) rather than something to interpolate.
+% (RELAX:secondPassTooManyFlaggedChannels) rather than something to interpolate. Its time is
+% on the cleaned timeline, which lacks every period deleted before it.
 
     flags.ShiftHigh = scores.range > scores.shiftUpper;
     flags.ShiftLow = scores.range < 2;
@@ -23,7 +24,7 @@ function flags = RELAX_flag_extreme_channel_epochs(scores, driftSlopes, onsetSec
     tooMany = find(flaggedPerEpoch > RELAX_cfg.SecondPassMaxProportionFlaggedChannels * nChan, 1);
     if ~isempty(tooMany)
         error('RELAX:secondPassTooManyFlaggedChannels', ...
-            'Epoch at %.1f s has %d of %d channels flagged after cleaning (limit %.0f%%); the first pass should have removed it', ...
+            'Epoch at %.1f s into the cleaned data has %d of %d channels flagged after cleaning (limit %.0f%%); the first pass should have removed it', ...
             onsetSeconds(tooMany), flaggedPerEpoch(tooMany), nChan, 100 * RELAX_cfg.SecondPassMaxProportionFlaggedChannels);
     end
 end

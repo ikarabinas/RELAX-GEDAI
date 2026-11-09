@@ -46,7 +46,8 @@ function test_RELAX_flag_extreme_channel_epochs()
         RELAX_flag_extreme_channel_epochs(s, drift, onsetSeconds, cfg);
     catch err
         threw = strcmp(err.identifier, 'RELAX:secondPassTooManyFlaggedChannels');
-        assert(contains(err.message, sprintf('%.1f', onsetSeconds(4))) && contains(err.message, '3 of 10'), ...
+        assert(contains(err.message, sprintf('%.1f', onsetSeconds(4))) && contains(err.message, '3 of 10') ...
+            && contains(err.message, 's into the cleaned data'), ...
             'error message does not name the epoch and counts: %s', err.message);
     end
     assert(threw, '3 of 10 channels flagged did not raise RELAX:secondPassTooManyFlaggedChannels');
