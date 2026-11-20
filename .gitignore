@@ -10,8 +10,10 @@
 # ipynb checkpoints
 *.ipynb_checkpoints/*
 
-# Real-data test fixtures (large, derived from real recordings)
+# Real-data test fixtures (large, derived from real recordings) & parked tests
 tests/fixtures/
+tests/parked/
+tests/stubs/
 
 # SLURM job logs (tests/run_integration_smoke.sh output/error)
 logs/
@@ -28,10 +30,9 @@ CLAUDE.local.md
 /*.mat
 /repro_*.out
 
-# Extreme-rejection survey: outputs and one-off comparison scripts.
+# local surveys / tooling
 /extreme_rejection_survey/*
-
-# Pop-detector tuning and survey tooling
 /slope_gate_survey/
 /variance_ratio_survey/
 /local_scripts/
+/muscle_deferral_comparison/
