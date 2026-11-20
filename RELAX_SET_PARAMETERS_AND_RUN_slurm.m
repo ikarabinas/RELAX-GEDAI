@@ -360,7 +360,7 @@ RELAX_cfg.Perform_PREP_bad_channel_rejection=0; % 0 = skip PREP findNoisyChannel
 % happen before the filter sees it. See
 % docs/superpowers/specs/2026-09-14-pop-artifact-repair-design.md
 % ON since 2026-09-17: the two-window detector / transition-fill stage passed its real-data
-% checks on the surveyed files (validate_pop_repair.m; report in
+% checks on the surveyed files (local_scripts/validate_pop_repair.m; report in
 % docs/superpowers/reports/2026-09-17-pop-repair-validation.md). The previous derivative-
 % based detector had failed at its shipped defaults
 % (docs/superpowers/reports/2026-09-14-pop-repair-validation.md).
