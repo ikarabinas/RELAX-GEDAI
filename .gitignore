@@ -1,23 +1,14 @@
 # Ignore files with default autosave extension
-
 *.asv
 
-
-
 # OSX / *nix default autosave extension
-
 *.m~
 
-
-
 # Compiled MEX binaries (all platforms)
-
 *.mex*
-
 
 # ipynb checkpoints
 *.ipynb_checkpoints/*
-
 
 # Real-data test fixtures (large, derived from real recordings)
 tests/fixtures/
@@ -27,3 +18,20 @@ logs/
 .superpowers/
 
 docs/
+
+# Local claude config
+.claude/*
+.mcp.json
+CLAUDE.local.md
+
+# Scratch results at the repo root
+/*.mat
+/repro_*.out
+
+# Extreme-rejection survey: outputs and one-off comparison scripts.
+/extreme_rejection_survey/*
+
+# Pop-detector tuning and survey tooling
+/slope_gate_survey/
+/variance_ratio_survey/
+/local_scripts/
