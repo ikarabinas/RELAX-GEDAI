@@ -156,12 +156,14 @@ RELAX_add_vendored_noisetools();  % nt_detrend for RELAX_repair_steps, see vendo
 RELAX_cfg.caploc=[]; % path containing electrode positions. Set to =[] if electrode locations are already in your EEG file.
 
 % Specify the to be processed file locations:
-RELAX_cfg.myPath='/home/nga4004/TMS_response_variability/store/mdd_dlpfc/preprocessed_Oct26_2exp/rest_treat_joined/';
+RELAX_cfg.myPath=getenv('RELAX_DATA_DIR');
+if isempty(RELAX_cfg.myPath); RELAX_cfg.myPath='/home/nga4004/TMS_response_variability/store/mdd_dlpfc/preprocessed_Nov26/rest_treat_joined/'; end
+if RELAX_cfg.myPath(end)~='/'; RELAX_cfg.myPath(end+1)='/'; end
 % The ICA comparison runs this script once per ICA method at the same time, so the method
 % comes from the environment (run_relax-gedai_slurm.sh) and names the output folder.
 RELAX_cfg.ICA_method=getenv('RELAX_ICA_METHOD');
 if isempty(RELAX_cfg.ICA_method); RELAX_cfg.ICA_method='picard'; end
-RELAX_cfg.OutputFolderName=['RELAXProcessed_gentlerICA_' RELAX_cfg.ICA_method]; % output folder inside myPath
+RELAX_cfg.OutputFolderName=['RELAXProcessed_gentlerICA_' RELAX_cfg.ICA_method '_interpChanEpochs_waveletGEDAI']; % output folder inside myPath
 
 % Specify whether all data is in a single folder or data are in BIDS format
 % (each EEG file within its own separate folder):
@@ -613,7 +615,7 @@ RELAX_cfg.MaxProportionOfDataCanBeMarkedAsMuscle=0.50;  % Maximum amount of data
 RELAX_cfg.ProportionOfMuscleContaminatedEpochsAboveWhichToRejectChannel=0.50; % If the proportion of epochs showing muscle activity from an electrode is higher than this, the electrode is deleted. 
 % Set muscle proportion before deletion to 1 to not delete electrodes based on muscle activity
 RELAX_cfg.RejectMuscleChannelsAfterCleaning=1; % 1 = keep muscle-contaminated electrodes through ICA and GEDAI and apply the threshold above to the cleaned data instead; 0 = apply it before cleaning (RELAX default)
-RELAX_cfg.InterpolateExtremeChannelEpochsAfterCleaning=0; % 1 = after cleaning, re-mark extreme channel-epochs against first-pass thresholds and interpolate them; see docs/superpowers/specs/2026-11-06-post-cleaning-channel-epoch-interpolation-design.md
+RELAX_cfg.InterpolateExtremeChannelEpochsAfterCleaning=1; % 1 = after cleaning, re-mark extreme channel-epochs against first-pass thresholds and interpolate them; see docs/superpowers/specs/2026-11-06-post-cleaning-channel-epoch-interpolation-design.md
 RELAX_cfg.SecondPassMaxProportionFlaggedChannels=0.20; % error if a cleaned epoch has more than this proportion of channels flagged
 RELAX_cfg.ProportionOfExtremeNoiseAboveWhichToRejectChannel=0.25; % If the proportion of all epochs from a single electrode that are marked as containing extreme artifacts is higher than this, the electrode is deleted
 
