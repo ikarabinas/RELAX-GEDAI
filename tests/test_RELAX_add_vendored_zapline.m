@@ -9,8 +9,7 @@ function test_RELAX_add_vendored_zapline()
     % not just the customized ones. A partial shadow is the failure mode that would
     % pair a patched clean_data_with_zapline_plus with the plugin's unpatched nt_smooth.
     mFiles = dir(fullfile(vendorDir, '*.m'));
-    % 26 upstream .m files. Task 2 adds pwelch_segmented.m, making it 27; the
-    % floor stays at 26 so this test is correct both before and after that.
+    % At least the 26 upstream .m files; the helpers added here (VENDORING.md) come on top.
     assert(numel(mFiles) >= 26, ...
         'expected the full upstream tree (26 .m files), found %d', numel(mFiles));
     for k = 1:numel(mFiles)

@@ -5,7 +5,10 @@ function test_GEDAI_segment_bounds()
 % latency 0.5 when it deletes from sample 1; GEDAI used to clamp that to sample 1 and
 % process sample 1 as its own one-sample segment, returning it at ~36x its input.
 
-    addpath('/home/nga4004/gitRepos/GEDAI-master/auxiliaries');
+    gedaiAuxiliaries = '/home/nga4004/gitRepos/GEDAI-master/auxiliaries';
+    assert(isfile(fullfile(gedaiAuxiliaries, 'GEDAI_segment_bounds.m')), ...
+        'GEDAI fork not found: expected GEDAI_segment_bounds.m in %s', gedaiAuxiliaries);
+    addpath(gedaiAuxiliaries);
 
     EEG = struct('pnts', 100, 'event', struct('type', {}, 'latency', {}));
     assert(isequal(GEDAI_segment_bounds(EEG), [1 100]), 'no boundaries: one segment');

@@ -110,17 +110,6 @@
 %     SlopeExcludeMs       - the local spread s(t) ignores this many ms centred on t (default 150;
 %                             forced odd in samples), so a pop's own slope does not inflate the
 %                             scale it is scored against. 0 excludes only t itself
-%     ThresholdPairs       - N x 2 matrix of [ZThreshold ChannelZThreshold] rows (default [],
-%                             meaning use the ZThreshold/ChannelZThreshold options above).
-%                             When given, the per-channel statistics that do not depend on the
-%                             thresholds (levelStatistic, floorBoundFraction, rawScale,
-%                             diffScale) are computed once per channel and reused for every row,
-%                             steps becomes an N x 1 struct array and info an N x 1 struct
-%                             array, and element k is identical to a separate call with
-%                             'ZThreshold', ThresholdPairs(k,1), 'ChannelZThreshold',
-%                             ThresholdPairs(k,2) (info(k).params carries that pair's own
-%                             ZThreshold/ChannelZThreshold, alongside ThresholdPairs itself).
-%                             Malformed values (not N x 2 with N >= 1, or non-finite) error.
 %
 % Outputs:
 %   steps - struct of parallel [N x 1] columns, sorted by channel then sample. An empty
@@ -185,11 +174,8 @@
 % amplitude (final review, 2026-09-25: 100-125 ms ramps found, 150-500 ms never, at 200 and
 % 1000 uV). That limit is set by SlopeBaselineMs and SlopeSpreadQuantile, not by TransitionMs.
 %
-% Per-channel work splits into a statistics stage (independent of ZThreshold/
-% ChannelZThreshold: the degenerate check, levelStatistic, floorBoundFraction, rawScale,
-% diffScale, zeroSlopeFraction, the smoothed trace) computed once, and a gating stage (gateCandidates onward)
-% repeated for every ThresholdPairs row. Channels are distributed over any already-open
-% parallel pool (gcp('nocreate')); this function never opens one itself.
+% Channels are distributed over any already-open parallel pool (gcp('nocreate')); this
+% function never opens one itself.
 
 function [steps, info] = RELAX_detect_steps(EEG, varargin)
 
@@ -212,35 +198,24 @@ function [steps, info] = RELAX_detect_steps(EEG, varargin)
     p.addParameter('SlopeNoiseFloorMicrovolts', 1);
     p.addParameter('SlopeSpreadQuantile', 0.95);
     p.addParameter('SlopeExcludeMs', 150);
-    p.addParameter('ThresholdPairs', []);
     p.parse(varargin{:});
     opt = p.Results;
     opt.RefineTransition = logical(opt.RefineTransition);
     opt.derived = derivedSamples(opt, EEG.srate);
     d = opt.derived;
 
-    pairs = validateThresholdPairs(opt.ThresholdPairs, opt.ZThreshold, opt.ChannelZThreshold);
-    nPairs = size(pairs, 1);
-
     nb = EEG.nbchan;
     labels = {EEG.chanlocs.labels};
 
-    steps = repmat(emptySteps(), nPairs, 1);
-    infoCell = cell(nPairs, 1);
-    for k = 1:nPairs
-        infoCell{k} = makeInfo(opt, nb, EEG, labels, pairs(k,:));
-    end
-    info = vertcat(infoCell{:});
+    steps = emptySteps();
+    info = makeInfo(opt, nb, EEG, labels);
 
     segments = RELAX_get_segments(EEG);
     minSegLen = 2*d.W + d.lag - 1;      % one valid centre needs both windows inside
     usable = (segments(:,2) - segments(:,1) + 1) >= minSegLen;
     if ~any(usable)
-        status = sprintf(['no inter-boundary segment reaches the %d samples needed for ' ...
+        info.status = sprintf(['no inter-boundary segment reaches the %d samples needed for ' ...
             'two %g ms windows around a %g ms transition'], minSegLen, opt.WindowMs, opt.TransitionMs);
-        for k = 1:nPairs
-            info(k).status = status;
-        end
         return
     end
     segments = segments(usable, :);
@@ -253,15 +228,11 @@ function [steps, info] = RELAX_detect_steps(EEG, varargin)
 
     chanResults = cell(nb, 1);
     parfor (ch = 1:nb, M)
-        chanResults{ch} = detectStepsOneChannel(data(ch,:), segments, valid, d, opt, pairs, srate); %#ok<PFBNS>
+        chanResults{ch} = detectStepsOneChannel(data(ch,:), segments, valid, d, opt, srate); %#ok<PFBNS>
     end
 
-    rowsAll = cell(nPairs, 1);
-    rej = cell(nPairs, 1);
-    for k = 1:nPairs
-        rowsAll{k} = {};
-        rej{k} = emptyRejected();
-    end
+    rowsAll = {};
+    rej = emptyRejected();
     degenerate = cell(0,1);
 
     for ch = 1:nb
@@ -270,78 +241,58 @@ function [steps, info] = RELAX_detect_steps(EEG, varargin)
             degenerate{end+1,1} = labels{ch}; %#ok<AGROW>
             continue
         end
-        for k = 1:nPairs
-            info(k).channelScaleSlope(ch) = r.channelScaleSlope(k);
-            info(k).floorBoundFraction(ch) = r.floorBoundFraction;
-            info(k).rawScale(ch) = r.rawScale;
-            info(k).diffScale(ch) = r.diffScale;
-            info(k).zeroSlopeFraction(ch) = r.zeroSlopeFraction;
-            for f = fieldnames(r.rej{k})'
-                rej{k}.(f{1}) = rej{k}.(f{1}) + r.rej{k}.(f{1});
-            end
-            for m = 1:numel(r.rows{k})
-                row = r.rows{k}{m};
-                row.channel = ch;
-                rowsAll{k}{end+1} = row; %#ok<AGROW>
-            end
+        info.channelScaleSlope(ch) = r.channelScaleSlope;
+        info.floorBoundFraction(ch) = r.floorBoundFraction;
+        info.rawScale(ch) = r.rawScale;
+        info.diffScale(ch) = r.diffScale;
+        info.zeroSlopeFraction(ch) = r.zeroSlopeFraction;
+        for f = fieldnames(r.rej)'
+            rej.(f{1}) = rej.(f{1}) + r.rej.(f{1});
+        end
+        for m = 1:numel(r.rows)
+            row = r.rows{m};
+            row.channel = ch;
+            rowsAll{end+1} = row; %#ok<AGROW>
         end
     end
 
-    for k = 1:nPairs
-        info(k).degenerateChannels = degenerate;
-        info(k).nRejected = rej{k};
-        info(k).available = true;
-        info(k).status    = 'ok';
-        if isempty(rowsAll{k}); continue; end
+    info.degenerateChannels = degenerate;
+    info.nRejected = rej;
+    info.available = true;
+    info.status    = 'ok';
+    if isempty(rowsAll); return; end
 
-        s = emptySteps();
-        tbl = [rowsAll{k}{:}];
-        s.channel   = [tbl.channel]';
-        s.sample    = [tbl.sample]';
-        s.onset     = [tbl.onset]';
-        s.offset    = [tbl.offset]';
-        s.amplitude = [tbl.amplitude]';
-        s.z         = [tbl.z]';
-        s.channelZ  = [tbl.channelZ]';
-        s.riseMs    = [tbl.riseMs]';
-        [~, ord] = sortrows([s.channel s.sample]);
-        for f = fieldnames(s)'
-            if ~isempty(s.(f{1})); s.(f{1}) = s.(f{1})(ord); end
-        end
-        s.label = reshape(labels(s.channel), [], 1);
-
-        % co-occurrence events and common-mode flag
-        [s.eventId, s.commonMode, info(k).events] = groupEvents(s, nb, d.cmGap, ...
-            opt.CommonModeChannelFraction);
-        info(k).nCommonModeSteps  = sum(s.commonMode);
-        info(k).nCommonModeEvents = sum(info(k).events.commonMode);
-
-        info(k).nSteps            = numel(s.sample);
-        info(k).stepsPerChannel   = accumarray(s.channel, 1, [nb 1]);
-        info(k).nChannelsAffected = sum(info(k).stepsPerChannel > 0);
-        info(k).medianRiseMs      = median(s.riseMs);
-
-        % bad contacts, from the channel's own (non-common-mode) steps; the wrapper re-ranks
-        % with RELAX_rank_pop_channels once eye-movement steps are known
-        info(k) = RELAX_rank_pop_channels(s, info(k), ~s.commonMode);
-        steps(k) = s;
+    s = emptySteps();
+    tbl = [rowsAll{:}];
+    s.channel   = [tbl.channel]';
+    s.sample    = [tbl.sample]';
+    s.onset     = [tbl.onset]';
+    s.offset    = [tbl.offset]';
+    s.amplitude = [tbl.amplitude]';
+    s.z         = [tbl.z]';
+    s.channelZ  = [tbl.channelZ]';
+    s.riseMs    = [tbl.riseMs]';
+    [~, ord] = sortrows([s.channel s.sample]);
+    for f = fieldnames(s)'
+        if ~isempty(s.(f{1})); s.(f{1}) = s.(f{1})(ord); end
     end
-end
+    s.label = reshape(labels(s.channel), [], 1);
 
-% ------------------------------------------------------------------------------------------
-function pairs = validateThresholdPairs(tp, zDefault, czDefault)
-    if isequal(size(tp), [0 0])
-        pairs = [zDefault czDefault];
-        return
-    end
-    if ~isnumeric(tp) || ~ismatrix(tp) || size(tp,2) ~= 2 || size(tp,1) < 1
-        error('RELAX_detect_steps:ThresholdPairs', ...
-            'ThresholdPairs must be an N x 2 numeric matrix with N >= 1');
-    end
-    if ~all(isfinite(tp(:)))
-        error('RELAX_detect_steps:ThresholdPairs', 'ThresholdPairs must contain only finite values');
-    end
-    pairs = tp;
+    % co-occurrence events and common-mode flag
+    [s.eventId, s.commonMode, info.events] = groupEvents(s, nb, d.cmGap, ...
+        opt.CommonModeChannelFraction);
+    info.nCommonModeSteps  = sum(s.commonMode);
+    info.nCommonModeEvents = sum(info.events.commonMode);
+
+    info.nSteps            = numel(s.sample);
+    info.stepsPerChannel   = accumarray(s.channel, 1, [nb 1]);
+    info.nChannelsAffected = sum(info.stepsPerChannel > 0);
+    info.medianRiseMs      = median(s.riseMs);
+
+    % bad contacts, from the channel's own (non-common-mode) steps; the wrapper re-ranks
+    % with RELAX_rank_pop_channels once eye-movement steps are known
+    info = RELAX_rank_pop_channels(s, info, ~s.commonMode);
+    steps = s;
 end
 
 function tf = isRefineTransitionValue(v)
@@ -350,11 +301,8 @@ function tf = isRefineTransitionValue(v)
     tf = isscalar(v) && (islogical(v) || (isnumeric(v) && (v == 0 || v == 1)));
 end
 
-function info = makeInfo(opt, nb, EEG, labels, pair)
-    optK = opt;
-    optK.ZThreshold = pair(1);
-    optK.ChannelZThreshold = pair(2);
-    info = struct('available', false, 'status', '', 'params', optK, ...
+function info = makeInfo(opt, nb, EEG, labels)
+    info = struct('available', false, 'status', '', 'params', opt, ...
                    'nSteps', 0, 'nChannelsAffected', 0, ...
                    'stepsPerChannel', zeros(nb,1), 'stepRatePerMinute', zeros(nb,1), ...
                    'transitionFraction', zeros(nb,1), ...
@@ -370,21 +318,15 @@ function info = makeInfo(opt, nb, EEG, labels, pair)
                    'nCommonModeSteps', 0, 'nCommonModeEvents', 0, 'medianRiseMs', NaN);
 end
 
-function r = detectStepsOneChannel(x, segments, valid, d, opt, pairs, srate)
-% One channel's statistics stage (once) plus gating stage (per ThresholdPairs row).
-    nPairs = size(pairs, 1);
+function r = detectStepsOneChannel(x, segments, valid, d, opt, srate)
     r.degenerate = isDegenerate(x, segments);
-    r.channelScaleSlope = nan(1, nPairs);
+    r.channelScaleSlope = NaN;
     r.floorBoundFraction = NaN;
     r.rawScale = NaN;
     r.diffScale = NaN;
     r.zeroSlopeFraction = NaN;
-    r.rows = cell(nPairs, 1);
-    r.rej  = cell(nPairs, 1);
-    for k = 1:nPairs
-        r.rows{k} = {};
-        r.rej{k}  = emptyRejected();
-    end
+    r.rows = {};
+    r.rej  = emptyRejected();
     if r.degenerate
         return
     end
@@ -397,41 +339,32 @@ function r = detectStepsOneChannel(x, segments, valid, d, opt, pairs, srate)
     r.diffScale = robustSd(dx(valid(1:end-1) & valid(2:end)));
     r.zeroSlopeFraction = mean(Dslope(valid) == 0);
 
-    xs = [];
-    for k = 1:nPairs
-        optK = opt;
-        optK.ZThreshold = pairs(k,1);
-        optK.ChannelZThreshold = pairs(k,2);
-        [cand, chanZ, scaleSlope] = gateCandidates(D, Dslope, z, valid, optK);
-        r.channelScaleSlope(k) = scaleSlope;
-        if ~any(cand); continue; end
+    [cand, chanZ, r.channelScaleSlope] = gateCandidates(D, Dslope, z, valid, opt);
+    if ~any(cand); return; end
 
-        if isempty(xs)
-            xs = movmedian(x, d.smooth, 'omitnan');
-        end
-        for sgn = [1 -1]
-            [rs, re] = signedRuns(cand, Dslope, sgn, d.refr);
-            for m = 1:numel(rs)
-                segIdx = find(segments(:,1) <= rs(m) & segments(:,2) >= re(m), 1);
-                if isempty(segIdx); continue; end
-                if optK.RefineTransition
-                    [row, why] = refineCandidate(x, xs, z, chanZ, rs(m), re(m), ...
-                                                 segments(segIdx,1), segments(segIdx,2), optK, srate);
-                else
-                    [row, why] = rawCandidate(x, D, z, chanZ, rs(m), re(m), ...
-                                              segments(segIdx,1), segments(segIdx,2), optK, srate);
-                end
-                if isempty(row)
-                    r.rej{k}.(why) = r.rej{k}.(why) + 1;
-                else
-                    r.rows{k}{end+1} = row; %#ok<AGROW>
-                end
+    xs = movmedian(x, d.smooth, 'omitnan');
+    for sgn = [1 -1]
+        [rs, re] = signedRuns(cand, Dslope, sgn, d.refr);
+        for m = 1:numel(rs)
+            segIdx = find(segments(:,1) <= rs(m) & segments(:,2) >= re(m), 1);
+            if isempty(segIdx); continue; end
+            if opt.RefineTransition
+                [row, why] = refineCandidate(x, xs, z, chanZ, rs(m), re(m), ...
+                                             segments(segIdx,1), segments(segIdx,2), opt, srate);
+            else
+                [row, why] = rawCandidate(x, D, z, chanZ, rs(m), re(m), ...
+                                          segments(segIdx,1), segments(segIdx,2), opt, srate);
+            end
+            if isempty(row)
+                r.rej.(why) = r.rej.(why) + 1;
+            else
+                r.rows{end+1} = row; %#ok<AGROW>
             end
         end
-        if optK.RefineTransition
-            [r.rows{k}, r.rej{k}] = mergeSameSignRows(r.rows{k}, x, segments, d.W, srate, ...
-                                                       optK.MinAmplitudeMicrovolts, r.rej{k});
-        end
+    end
+    if opt.RefineTransition
+        [r.rows, r.rej] = mergeSameSignRows(r.rows, x, segments, d.W, srate, ...
+                                            opt.MinAmplitudeMicrovolts, r.rej);
     end
 end
 
