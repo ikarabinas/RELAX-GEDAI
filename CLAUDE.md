@@ -42,7 +42,7 @@ No CLI entry point; these are MATLAB scripts (`run(...)` or the editor's Run but
   stage 2 redraws from it in seconds. Its "before" is the wICA input rebuilt from `Extremes_Rejected`
   (`RELAX_QC_baseline.m`), so it refuses configs where that is wrong (MWF/GEDAI on, low-pass after the
   save) — `RELAX_QC_check_config.m`. Design: `docs/superpowers/specs/2026-10-15-qc-figures-design.md`.
-- `RELAX_residual_screen.m` (`sbatch run_RELAX_residual_screen.sh [score|sheets|all] [file,...]`) — decides
+- `RELAX_residual_screen.m` (`sbatch run_RELAX_residual_screen.sh [score|sheets|move|all] [file,...] [folder]`) — decides
   which cleaned files are clean enough for source localization. `score` measures muscle proportion and
   residual blink ratio per file and flags robust-z outliers over the cleaned files (muscle strength is kept as
   a covariate only), and records why each interpolated channel was removed (`RELAX_screen_channel_reasons.m`); it also
@@ -51,7 +51,9 @@ No CLI entry point; these are MATLAB scripts (`run(...)` or the editor's Run but
   the pipeline's `MaxProportionOfElectrodesThatCanBeDeleted` limit. It writes `RELAXProcessed/Residual_screen/residual_screen.mat/.csv` with a `README.md`;
   `sheets` draws a review sheet into `review/` for each failing, unscreened or sampled-passing file (or just
   the named files); its muscle windows are the epochs with the highest pipeline muscle slope
-  (`RELAX_screen_muscle_slopes.m`, via `RELAX_metrics_muscle`). Settings are at the top of the script.
+  (`RELAX_screen_muscle_slopes.m`, via `RELAX_metrics_muscle`). `move` (last step of `all`) moves failing files into
+  `Cleaned_Data/bad_QC_files/`; `score` then refuses to run until they are moved back, since it would count
+  them as not cleaned and shift the baseline. Settings are at the top of the script.
 - `validate_pop_repair.m` (`sbatch run_validate_pop_repair.sh`) — real-data validation of the
   electrode-pop stage on the four Sep26 surveyed files (m155 was dropped as too noisy). Superseded
   derivative-detector tooling is parked in

@@ -10,8 +10,8 @@
 
 # Residual-noise screen (RELAX_residual_screen.m): which cleaned files are clean enough for source localization.
 #   mkdir -p logs && sbatch run_RELAX_residual_screen.sh [stage] [files]
-#     stage - score | sheets | all (default: all)
-#              sheets needs an earlier score run
+#     stage - score | sheets | move | all (default: all = score, sheets, move)
+#              sheets and move need an earlier score run; move puts failing files in Cleaned_Data/bad_QC_files
 #     files - optional comma-separated base names; sheets draws only these
 #             e.g. m144_dlpfc_day1_stitched,m208_dlpfc_day1_stitched
 #     folder - OutputFolderName of the run to screen (default RELAXProcessed_broadbandGEDAI)
