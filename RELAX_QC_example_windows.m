@@ -5,12 +5,9 @@
 %   >> windows = RELAX_QC_example_windows(pick, summary, paths, cfg, opts);
 %
 % Blink and muscle windows compare the pre-wICA baseline with the cleaned file on the
-% cleaned timeline. The pop windows (RELAX_QC_pick_pops) compare the raw input with the
-% pipeline's pop repair replayed on it (RELAX_QC_replay_pop_repair), both unfiltered and at
-% the input rate, on the pre-excision timeline; the replay runs once per file. Each pop
-% window carries .fidelity: the relative RMS difference, over the window outside later-
-% excised periods, between the replay put through RELAX_QC_display_filter and
-% Extremes_Rejected. A centre in pick.centres overrides the automatic one in summary
+% cleaned timeline. The pop windows (RELAX_QC_pick_pops) compare the raw input, unfiltered at
+% the input rate, with the final cleaned file laid back onto the pre-excision timeline
+% (RELAX_QC_cleaned_on_extremes_timeline), NaN where the pipeline deleted data. A centre in pick.centres overrides the automatic one in summary
 % (the pop centre applies to the largest pop only). Outputs [1 x 4] RELAX_QC_empty_window structs.
 
 function windows = RELAX_QC_example_windows(pick, summary, paths, cfg, opts)
@@ -23,7 +20,7 @@ function windows = RELAX_QC_example_windows(pick, summary, paths, cfg, opts)
     windows = [ ...
         comparisonWindow("blink", centreOf(pick.centres.blink, summary.centres.blink), baseline, cleanedEEG, shownLabels, opts), ...
         comparisonWindow("muscle", centreOf(pick.centres.muscle, summary.centres.muscle), baseline, cleanedEEG, shownLabels, opts), ...
-        popWindows(pick, summary, extremesEEG, paths, cfg, shownLabels, opts)];
+        popWindows(pick, summary, extremesEEG, cleanedEEG, paths, shownLabels, opts)];
 end
 
 function w = comparisonWindow(kind, centre, before, after, labels, opts)
@@ -35,7 +32,7 @@ function w = comparisonWindow(kind, centre, before, after, labels, opts)
     w = RELAX_QC_fill_window(w, centre, before, after, labels, opts.exampleSeconds);
 end
 
-function windows = popWindows(pick, summary, extremesEEG, paths, cfg, shownLabels, opts)
+function windows = popWindows(pick, summary, extremesEEG, cleanedEEG, paths, shownLabels, opts)
     windows = [RELAX_QC_empty_window("pop"), RELAX_QC_empty_window("popKept")];
     handPickedCentre = pick.centres.pop;
     shownSeconds = zeros(0, 2);
@@ -49,29 +46,20 @@ function windows = popWindows(pick, summary, extremesEEG, paths, cfg, shownLabel
     if ~any(present), return, end
 
     repairedLabels = cellfun(@(p) char(p.label), chosen(present), 'UniformOutput', false);
-    replayLabels = unique([repairedLabels, shownLabels], 'stable');
+    cleanedLabels = {cleanedEEG.chanlocs.labels};
     inputEEG = pop_loadset('filename', paths.input);
-    [unrepaired, repaired, replayInfo] = RELAX_QC_replay_pop_repair(inputEEG, extremesEEG, cfg, replayLabels);
+    inputLabels = {inputEEG.chanlocs.labels};
+    replayLabels = unique([repairedLabels, shownLabels], 'stable');
+    replayLabels = replayLabels(ismember(replayLabels, cleanedLabels) & ismember(replayLabels, inputLabels));
+    raw = pop_select(inputEEG, 'channel', replayLabels);
     clear inputEEG
-    filtered = RELAX_QC_display_filter(repaired, cfg);
-    if filtered.pnts ~= extremesEEG.pnts
-        [windows(present).note] = deal(string(sprintf('Replay has %d samples after filtering, Extremes_Rejected %d', filtered.pnts, extremesEEG.pnts)));
-        return
-    end
 
     centres = [centreOf(pick.centres.pop, NaN), NaN];
     for k = find(present)
         labels = [{char(chosen{k}.label)}, shownLabels(~strcmp(shownLabels, chosen{k}.label))];
         centre = centreOf(centres(k), chosen{k}.centreSeconds);
-        windows(k) = popWindow(windows(k), chosen{k}, centre, unrepaired, repaired, filtered, extremesEEG, labels, opts);
-        windows(k).note = referenceNote(replayInfo);
-    end
-end
-
-function note = referenceNote(replayInfo)
-    note = "Grey: raw input, unfiltered. Blue: pop repair replayed on it";
-    if replayInfo.referencePopsReplayed
-        note = note + " (reference pops subtracted first)";
+        windows(k) = popWindow(windows(k), chosen{k}, centre, raw, cleanedEEG, extremesEEG, labels, opts);
+        windows(k).note = "Grey: raw input, unfiltered. Blue: final cleaned data";
     end
 end
 
@@ -80,32 +68,15 @@ function c = centreOf(override, automatic)
     if ~isnan(override), c = override; end
 end
 
-function w = popWindow(w, pop, centre, unrepaired, repaired, filtered, extremesEEG, labels, opts)
-    w = RELAX_QC_fill_window(w, centre, unrepaired, repaired, labels, opts.exampleSeconds);
+function w = popWindow(w, pop, centre, raw, cleanedEEG, extremesEEG, labels, opts)
+    w = RELAX_QC_fill_window(w, centre, raw, raw, labels, opts.exampleSeconds);
     firstSecond = w.t < w.t(1) + 1;
     w.before = w.before - median(w.before(:, firstSecond), 2);
-    w.after = w.after - median(w.after(:, firstSecond), 2);
+    w.after = RELAX_QC_cleaned_on_extremes_timeline(cleanedEEG, extremesEEG.RELAX.ExtremelyBadPeriodsForDeletion, ...
+                                                    extremesEEG.pnts, w.channels, w.t);
     w.removed = w.before - w.after;
     if isequal(centre, pop.centreSeconds) || (pop.shadeSeconds(1) >= w.t(1) && pop.shadeSeconds(2) <= w.t(end))
         w.shade = pop.shadeSeconds;
     end
     w.excised = RELAX_QC_excised_intervals(extremesEEG.RELAX.ExtremelyBadPeriodsForDeletion, extremesEEG.srate, w.t([1 end]));
-    w.fidelity = replayFidelity(w, filtered, extremesEEG);
-end
-
-function fidelity = replayFidelity(w, replayed, extremesEEG)
-    span = floor(w.t(1) * extremesEEG.srate) + 1 : floor(w.t(end) * extremesEEG.srate) + 1;
-    seconds = (span - 1) / extremesEEG.srate;
-    keep = true(size(span));
-    for k = 1:size(w.excised, 1)
-        keep = keep & ~(seconds >= w.excised(k, 1) & seconds <= w.excised(k, 2));
-    end
-    [~, replayRows] = ismember(w.channels, {replayed.chanlocs.labels});
-    [~, savedRows] = ismember(w.channels, {extremesEEG.chanlocs.labels});
-    usable = replayRows > 0 & savedRows > 0;
-    difference = double(replayed.data(replayRows(usable), span(keep))) - double(extremesEEG.data(savedRows(usable), span(keep)));
-    saved = double(extremesEEG.data(savedRows(usable), span(keep)));
-    fidelity = struct('channels', {w.channels(usable)}, ...
-                      'relativeRms', sqrt(sum(difference.^2, 2) ./ sum(saved.^2, 2))', ...
-                      'fractionCompared', mean(keep));
 end

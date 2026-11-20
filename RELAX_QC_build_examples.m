@@ -18,14 +18,12 @@ function examples = RELAX_QC_build_examples(picks, T, summaries, cfgs, processed
         windows = RELAX_QC_try_example_windows(picks(k), summaries(i), RELAX_QC_file_paths(processed, inputs, T.File(i)), ...
                                                cfgs(char(T.Participant(i))), opts);
         examples(end+1) = struct('file', picks(k).file, 'role', picks(k).role, 'windows', windows); %#ok<AGROW>
-        reportFidelity(picks(k).file, windows);
+        reportUnavailablePops(picks(k).file, windows);
     end
 end
 
-function reportFidelity(file, windows)
+function reportUnavailablePops(file, windows)
     for w = windows([windows.kind] == "pop" | [windows.kind] == "popKept")
-        if ~w.available, fprintf('%s %s: %s\n', file, w.kind, w.note); continue, end
-        fprintf('%s %s repaired %s: relative RMS vs Extremes_Rejected %.3f (all shown channels: %s); %.0f%% of window compared\n', ...
-                file, w.kind, w.channels{1}, w.fidelity.relativeRms(1), mat2str(w.fidelity.relativeRms, 3), 100 * w.fidelity.fractionCompared);
+        if ~w.available, fprintf('%s %s: %s\n', file, w.kind, w.note); end
     end
 end

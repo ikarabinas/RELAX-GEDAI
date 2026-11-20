@@ -85,6 +85,6 @@ function w = exampleWindow(kind, chanlocs)
     if kind == "pop" || kind == "popKept"
         w.shade = [102.9 103.1];
         w.excised = [101.2 101.8; 104.6 105.4];
-        w.note = "Grey: raw input, unfiltered. Blue: pop repair replayed on it";
+        w.note = "Grey: raw input, unfiltered. Blue: final cleaned data";
     end
 end

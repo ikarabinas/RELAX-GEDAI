@@ -15,10 +15,12 @@
 #     files - optional comma-separated base names to trial on a few files,
 #             e.g. m144_dlpfc_day1_stitched,m208_dlpfc_day1_stitched
 #     folder - OutputFolderName of the run to plot (default RELAXProcessed_broadbandGEDAI)
+#     qcfolder - folder inside the run to write figures and cache to (default QC_figures)
 
 STAGE="${1:-all}"
 FILES="${2:-}"
 FOLDER="${3:-RELAXProcessed_broadbandGEDAI}"
+QCFOLDER="${4:-QC_figures}"
 
 mkdir -p logs
 module load matlab
@@ -28,4 +30,4 @@ matlab -nodisplay -nosplash -batch "\
 addpath('/home/nga4004/tools/eeglab2026.0.0'); eeglab nogui; \
 addpath(pwd); RELAX_add_vendored_noisetools(); \
 files = strsplit('${FILES}', ','); files = files(~cellfun(@isempty, files)); \
-RELAX_QC_figures('${STAGE}', files, '${FOLDER}')"
+RELAX_QC_figures('${STAGE}', files, '${FOLDER}', '${QCFOLDER}')"

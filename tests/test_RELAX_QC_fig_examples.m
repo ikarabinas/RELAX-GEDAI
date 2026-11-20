@@ -7,9 +7,9 @@ function test_RELAX_QC_fig_examples()
     caption = RELAX_QC_fig_examples(cache, outDir);
     assertSaved(outDir, 'fig1_examples_1_f1');
     assertSaved(outDir, 'fig1_examples_2_f2');
-    assert(startsWith(caption, "## Figure 1") && contains(caption, "display reconstruction") && contains(caption, "unfiltered") ...
+    assert(startsWith(caption, "## Figure 1") && contains(caption, "final cleaned file") && contains(caption, "unfiltered") ...
            && contains(caption, "later excised") && contains(caption, "repaired channel at the top") ...
-           && contains(caption, "next-largest") && contains(caption, "slow drift") && contains(caption, "reference pops"), 'caption: %s', caption);
+           && contains(caption, "next-largest") && contains(caption, "slow drift"), 'caption: %s', caption);
 
     empty = make_qc_cache_fixture(0);
     RELAX_QC_fig_examples(empty, fullfile(outDir, 'empty'));
